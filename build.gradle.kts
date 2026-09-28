@@ -8,7 +8,7 @@ plugins {
 }
 
 group = "com.imagepreptool"
-version = "0.1.0-SNAPSHOT"
+version = "0.1.0"
 
 kotlin {
     jvmToolchain(17)
@@ -26,6 +26,10 @@ compose.desktop {
     application {
         mainClass = "com.imagepreptool.MainKt"
 
+        buildTypes.release.proguard {
+            isEnabled.set(false)
+        }
+
         nativeDistributions {
             // 単体 EXE（JRE 同梱インストーラ）。ポータブル版は packagePortableWindowsExe
             targetFormats(TargetFormat.Exe)
@@ -38,7 +42,6 @@ compose.desktop {
                 menuGroup = "ImagePrepTool"
                 upgradeUuid = "18189999-4335-4149-8624-9A27244E9F91"
                 console = false
-                dirChooser = true
                 perUserInstall = true
                 shortcut = true
                 menu = true

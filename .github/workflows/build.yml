@@ -42,18 +42,21 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Package standalone Windows EXE (installer + portable)
-        run: >
-          .\gradlew.bat
-          packageReleaseExe
-          packagePortableWindowsExe
-          --no-daemon
+      - name: Package portable Windows app (primary artifact)
+        run: .\gradlew.bat packagePortableWindowsExe --no-daemon
+
+      - name: Package installer EXE (optional)
+        continue-on-error: true
+        run: .\gradlew.bat packageReleaseExe --no-daemon
 
       - name: Upload installer EXE
+        if: success() || failure()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: ImagePrepTool-installer-exe
           path: build/compose/binaries/main-release/exe/*.exe
+          if-no-files-found: ignore
 
       - name: Upload portable ZIP
         uses: actions/upload-artifact@v4
@@ -64,7 +67,7 @@ jobs:
   report-artifacts:
     runs-on: ubuntu-latest
     needs: [build-linux, package-windows-exe]
-    if: github.event_name == 'pull_request'
+    if: ${{ always() && !cancelled() && github.event_name == 'pull_request' }}
     steps:
       - name: Post sticky PR comment (artifacts)
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
@@ -79,11 +82,11 @@ jobs:
             | build-linux | `${{ needs.build-linux.result }}` |
             | package-windows-exe | `${{ needs.package-windows-exe.result }}` |
 
-            Windows パッケージが成功した場合、以下の Artifacts を [このワークフロー実行](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) からダウンロードできます。
+            Artifacts は [このワークフロー実行](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) から取得できます。
 
             | Artifact | 内容 |
             |----------|------|
-            | `ImagePrepTool-installer-exe` | JRE 同梱インストーラ EXE（`packageReleaseExe`） |
-            | `ImagePrepTool-portable-win` | ポータブル ZIP（展開後 `ImagePrepTool.exe` を直接起動） |
+            | `ImagePrepTool-portable-win` | ポータブル ZIP（展開後 `ImagePrepTool.exe` を直接起動・JRE 同梱） |
+            | `ImagePrepTool-installer-exe` | インストーラ EXE（ビルド成功時のみ） |
 
             commit: [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
