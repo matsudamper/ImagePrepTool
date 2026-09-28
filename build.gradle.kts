@@ -11,7 +11,7 @@ group = "com.imagepreptool"
 version = "0.1.0"
 
 kotlin {
-    jvmToolchain(17)
+    jvmToolchain(21)
 }
 
 dependencies {
