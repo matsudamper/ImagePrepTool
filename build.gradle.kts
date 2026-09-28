@@ -19,6 +19,7 @@ dependencies {
     implementation(compose.materialIconsExtended)
     implementation("com.drewnoakes:metadata-extractor:2.19.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
+    implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.8.4")
     testImplementation(kotlin("test"))
 }
 
