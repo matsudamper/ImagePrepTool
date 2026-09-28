@@ -23,6 +23,13 @@ PATH に以下がある前提（不足時は Step1 の確認パネルに表示�
 | WebP 読み込み | `dwebp` |
 | HEIF 変換 | `heif-convert` または `magick` |
 
+## モジュール構成
+
+| モジュール | 内容 |
+|------------|------|
+| `:app` | Compose Desktop UI・ViewModel・エントリポイント |
+| `:image-processing` | 画像リサイズ/変換、EXIF、外部ツール確認、ドメインモデル |
+
 ## ビルド
 
 ```bash
@@ -35,15 +42,15 @@ Windows 上で実行します。JRE は EXE / 配布フォルダに同梱され�
 
 | 成果物 | コマンド | 説明 |
 |--------|----------|------|
-| インストーラ EXE | `gradlew.bat packageReleaseExe` | 1 ファイルのセットアップ EXE（`build/compose/binaries/main-release/exe/`） |
-| ポータブル | `gradlew.bat packagePortableWindowsExe` | ZIP 内の `ImagePrepTool.exe` を直接起動（`build/compose/binaries/main-release/portable/`） |
+| インストーラ EXE | `gradlew.bat :app:packageReleaseExe` | `app/build/compose/binaries/main-release/exe/` |
+| ポータブル | `gradlew.bat :app:packagePortableWindowsExe` | `app/build/compose/binaries/main-release/portable/` |
 
 CI では `windows-latest` ジョブが上記をビルドし、Artifacts にアップロードします。
 
 デスクトップ実行（開発時・GUI 環境）:
 
 ```bash
-./gradlew run
+./gradlew :app:run
 ```
 
 ## 操作フロー

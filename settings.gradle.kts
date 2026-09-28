@@ -20,3 +20,6 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "ImagePrepTool"
+
+include(":app")
+include(":image-processing")
