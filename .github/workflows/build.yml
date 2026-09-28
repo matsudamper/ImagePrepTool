@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
   pull-requests: write
-  actions: read
 
 jobs:
   build-linux:
@@ -28,6 +27,9 @@ jobs:
 
   package-windows-exe:
     runs-on: windows-latest
+    outputs:
+      portable_artifact_url: ${{ steps.upload_portable.outputs.artifact-url }}
+      installer_artifact_url: ${{ steps.upload_installer.outputs.artifact-url }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -45,6 +47,7 @@ jobs:
         run: .\gradlew.bat :app:packageReleaseExe --no-daemon
 
       - name: Upload installer EXE
+        id: upload_installer
         if: success() || failure()
         continue-on-error: true
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
@@ -54,6 +57,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Upload portable ZIP
+        id: upload_portable
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: ImagePrepTool-portable-win
@@ -67,21 +71,23 @@ jobs:
       - name: Compose artifact download links
         id: artifact_links
         env:
-          GH_TOKEN: ${{ github.token }}
+          PORTABLE_ARTIFACT_URL: ${{ needs.package-windows-exe.outputs.portable_artifact_url }}
+          INSTALLER_ARTIFACT_URL: ${{ needs.package-windows-exe.outputs.installer_artifact_url }}
           WINDOWS_JOB_RESULT: ${{ needs.package-windows-exe.result }}
         run: |
           set -euo pipefail
-          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
-          markdown=$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
-            --jq --arg run_url "$run_url" \
-              '[.artifacts[] | select(.expired == false) | "- [\(.name)](" + $run_url + "/artifacts/" + (.id|tostring) + ")"] | join("\n")')
-
-          has_portable=false
-          if echo "$markdown" | grep -q "ImagePrepTool-portable-win"; then
-            has_portable=true
+          markdown=""
+          if [ -n "$PORTABLE_ARTIFACT_URL" ]; then
+            markdown="- [ImagePrepTool-portable-win](${PORTABLE_ARTIFACT_URL})"
+          fi
+          if [ -n "$INSTALLER_ARTIFACT_URL" ]; then
+            if [ -n "$markdown" ]; then
+              markdown="${markdown}"$'\n'
+            fi
+            markdown="${markdown}- [ImagePrepTool-installer-exe](${INSTALLER_ARTIFACT_URL})"
           fi
 
-          if [ -n "$markdown" ] && [ "$has_portable" = true ]; then
+          if [ -n "$markdown" ] && [ -n "$PORTABLE_ARTIFACT_URL" ]; then
             echo "failed=false" >> "$GITHUB_OUTPUT"
             {
               echo "message<<EOF"
@@ -94,7 +100,7 @@ jobs:
           if [ "$WINDOWS_JOB_RESULT" != "success" ]; then
             error_message="**エラー:** 成果物をビルドできませんでした（\`package-windows-exe\`: \`${WINDOWS_JOB_RESULT}\`）"
           else
-            error_message="**エラー:** 必須成果物 \`ImagePrepTool-portable-win\` が Artifacts に見つかりません"
+            error_message="**エラー:** 必須成果物 \`ImagePrepTool-portable-win\` の \`artifact-url\` がありません"
           fi
 
           echo "failed=true" >> "$GITHUB_OUTPUT"
