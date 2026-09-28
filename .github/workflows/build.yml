@@ -71,8 +71,10 @@ jobs:
           WINDOWS_JOB_RESULT: ${{ needs.package-windows-exe.result }}
         run: |
           set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
           markdown=$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
-            --jq '[.artifacts[] | select(.expired == false) | "- [\(.name)](\(.archive_download_url))"] | join("\n")')
+            --jq --arg run_url "$run_url" \
+              '[.artifacts[] | select(.expired == false) | "- [\(.name)](" + $run_url + "/artifacts/" + (.id|tostring) + ")"] | join("\n")')
 
           has_portable=false
           if echo "$markdown" | grep -q "ImagePrepTool-portable-win"; then
