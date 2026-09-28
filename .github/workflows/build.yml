@@ -1,0 +1,58 @@
+name: Build
+
+on:
+  push:
+    branches: [main, "cursor/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build and test
+        run: ./gradlew build --no-daemon
+
+  package-windows-exe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Package standalone Windows EXE (installer + portable)
+        run: >
+          .\gradlew.bat
+          packageReleaseExe
+          packagePortableWindowsExe
+          --no-daemon
+
+      - name: Upload installer EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImagePrepTool-installer-exe
+          path: build/compose/binaries/main-release/exe/*.exe
+
+      - name: Upload portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: ImagePrepTool-portable-win
+          path: build/compose/binaries/main-release/portable/*.zip
