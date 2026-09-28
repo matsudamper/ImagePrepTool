@@ -68,16 +68,37 @@ jobs:
         id: artifact_links
         env:
           GH_TOKEN: ${{ github.token }}
+          WINDOWS_JOB_RESULT: ${{ needs.package-windows-exe.result }}
         run: |
           set -euo pipefail
           markdown=$(gh api "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" \
-            --jq 'if (.artifacts | length) == 0 then "" else [.artifacts[] | select(.expired == false) | "- [\(.name)](\(.archive_download_url))"] | join("\n") end')
-          if [ -z "$markdown" ]; then
-            markdown="（ダウンロード可能な成果物はありません）"
+            --jq '[.artifacts[] | select(.expired == false) | "- [\(.name)](\(.archive_download_url))"] | join("\n")')
+
+          has_portable=false
+          if echo "$markdown" | grep -q "ImagePrepTool-portable-win"; then
+            has_portable=true
           fi
+
+          if [ -n "$markdown" ] && [ "$has_portable" = true ]; then
+            echo "failed=false" >> "$GITHUB_OUTPUT"
+            {
+              echo "message<<EOF"
+              echo "$markdown"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$WINDOWS_JOB_RESULT" != "success" ]; then
+            error_message="**エラー:** 成果物をビルドできませんでした（\`package-windows-exe\`: \`${WINDOWS_JOB_RESULT}\`）"
+          else
+            error_message="**エラー:** 必須成果物 \`ImagePrepTool-portable-win\` が Artifacts に見つかりません"
+          fi
+
+          echo "failed=true" >> "$GITHUB_OUTPUT"
           {
             echo "message<<EOF"
-            echo "$markdown"
+            echo "$error_message"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
@@ -87,3 +108,7 @@ jobs:
           header: imagepreptool-artifacts
           recreate: true
           message: ${{ steps.artifact_links.outputs.message }}
+
+      - name: Fail if required artifacts are missing
+        if: steps.artifact_links.outputs.failed == 'true'
+        run: exit 1
