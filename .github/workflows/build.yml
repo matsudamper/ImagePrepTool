@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   build-linux:
     runs-on: ubuntu-latest
@@ -56,3 +60,30 @@ jobs:
         with:
           name: ImagePrepTool-portable-win
           path: build/compose/binaries/main-release/portable/*.zip
+
+  report-artifacts:
+    runs-on: ubuntu-latest
+    needs: [build-linux, package-windows-exe]
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Post sticky PR comment (artifacts)
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          header: imagepreptool-artifacts
+          recreate: true
+          message: |
+            ## ビルド成果物
+
+            | Job | 結果 |
+            |-----|------|
+            | build-linux | `${{ needs.build-linux.result }}` |
+            | package-windows-exe | `${{ needs.package-windows-exe.result }}` |
+
+            Windows パッケージが成功した場合、以下の Artifacts を [このワークフロー実行](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) からダウンロードできます。
+
+            | Artifact | 内容 |
+            |----------|------|
+            | `ImagePrepTool-installer-exe` | JRE 同梱インストーラ EXE（`packageReleaseExe`） |
+            | `ImagePrepTool-portable-win` | ポータブル ZIP（展開後 `ImagePrepTool.exe` を直接起動） |
+
+            commit: [`${{ github.sha }}`](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
