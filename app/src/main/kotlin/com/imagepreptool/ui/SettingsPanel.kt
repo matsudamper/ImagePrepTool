@@ -90,7 +90,8 @@ fun SettingsPanel(
     outputDirectory: File?,
     isCustomOutputDirectory: Boolean,
     notices: List<Notice>,
-    includedCount: Int,
+    exportCount: Int,
+    isExportingSelection: Boolean,
     canExport: Boolean,
     onOptionsChange: ((EditOptions) -> EditOptions) -> Unit,
     onInputValidityChange: (String, Boolean) -> Unit,
@@ -135,7 +136,7 @@ fun SettingsPanel(
             ) {
                 Icon(painterResource(Res.drawable.ic_file_upload), null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(if (includedCount == 0) "書き出す画像を選択してください" else "$includedCount 枚を書き出す")
+                Text(if (isExportingSelection) "選択中の $exportCount 枚を書き出す" else "$exportCount 枚を書き出す")
             }
             Text(
                 "Ctrl+Enter で書き出し",

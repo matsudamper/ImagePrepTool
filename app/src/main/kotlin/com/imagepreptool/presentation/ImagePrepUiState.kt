@@ -16,7 +16,6 @@ enum class SelectMode { Single, Toggle, Range }
 
 data class ImageItem(
     val file: File,
-    val included: Boolean,
 )
 
 data class PreviewState(
@@ -62,9 +61,15 @@ sealed interface ExportState {
 }
 
 enum class NoticeAction(val label: String) {
-    ExcludeUnreadable("除外する"),
+    RemoveUnreadable("一覧から削除"),
     ShowTools("詳細"),
 }
+
+/** スナックバーで一度だけ表示するメッセージ */
+data class SnackbarMessage(
+    val text: String,
+    val canUndoRemoval: Boolean = false,
+)
 
 data class Notice(
     val text: String,
@@ -74,7 +79,9 @@ data class Notice(
 
 data class ImagePrepUiState(
     val images: List<ImageItem>,
-    val includedCount: Int,
+    /** 書き出す枚数。複数選択中は選択中の画像、そうでなければ一覧のすべて */
+    val exportCount: Int,
+    val isExportingSelection: Boolean,
     val focusedFile: File?,
     val selectedFiles: Set<File>,
     /** 一覧の見出し（フォルダ名など） */
@@ -92,7 +99,7 @@ data class ImagePrepUiState(
     val listener: Listener,
 ) {
     val hasImages: Boolean get() = images.isNotEmpty()
-    val canExport: Boolean get() = includedCount > 0 && notices.none { it.blocking } && export == ExportState.Idle && !isLoading
+    val canExport: Boolean get() = exportCount > 0 && notices.none { it.blocking } && export == ExportState.Idle && !isLoading
     val missingToolCount: Int
         get() = tools?.let { t ->
             listOf(t.canWriteWebp, t.heifDecoder != null).count { !it }
@@ -106,15 +113,13 @@ data class ImagePrepUiState(
         fun forgetRecent(dir: File)
         fun closeAll()
         fun clickImage(file: File, mode: SelectMode)
-        fun toggleIncluded(file: File)
-        fun toggleFocusedIncluded()
-        fun setSelectionIncluded(included: Boolean)
-        fun setAllIncluded(included: Boolean)
         fun selectAll()
         fun clearSelection()
         fun moveFocus(delta: Int)
         fun removeImage(file: File)
-        fun excludeUnreadable()
+        fun removeSelection()
+        fun removeUnreadable()
+        fun undoRemoval()
         fun updateOptions(transform: (EditOptions) -> EditOptions)
         fun setInputValid(field: String, valid: Boolean)
         fun chooseOutputDirectory(dir: File)
