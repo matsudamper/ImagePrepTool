@@ -72,6 +72,7 @@ class ImagePrepViewModel(
         override fun moveFocus(delta: Int) = this@ImagePrepViewModel.moveFocus(delta)
         override fun removeImage(file: File) = this@ImagePrepViewModel.removeImage(file)
         override fun removeSelection() = this@ImagePrepViewModel.removeSelection()
+        override fun removeFolder(folder: File) = this@ImagePrepViewModel.removeFolder(folder)
         override fun removeUnreadable() = this@ImagePrepViewModel.removeUnreadable()
         override fun undoRemoval() = this@ImagePrepViewModel.undoRemoval()
         override fun updateOptions(transform: (EditOptions) -> EditOptions) = this@ImagePrepViewModel.updateOptions(transform)
@@ -142,7 +143,6 @@ class ImagePrepViewModel(
             mutate {
                 it.copy(
                     images = files.map(::ImageItem),
-                    sourceFolder = dir,
                     focusedFile = files.first(),
                     selection = setOf(files.first()),
                     anchor = files.first(),
@@ -179,8 +179,7 @@ class ImagePrepViewModel(
             val added = supported.map { it.absoluteFile }.distinct().filter { it !in existing }
             mutate { state ->
                 state.copy(
-                    images = state.images + added.map(::ImageItem),
-                    sourceFolder = if (state.images.isEmpty()) null else state.sourceFolder,
+                    images = (state.images + added.map(::ImageItem)).groupedByFolder(),
                     focusedFile = state.focusedFile ?: added.firstOrNull(),
                 )
             }
@@ -223,7 +222,6 @@ class ImagePrepViewModel(
         mutate {
             it.copy(
                 images = emptyList(),
-                sourceFolder = null,
                 focusedFile = null,
                 selection = emptySet(),
                 anchor = null,
@@ -242,6 +240,10 @@ class ImagePrepViewModel(
 
     private fun removeSelection() {
         removeImages(viewModelStateFlow.value.effectiveSelection)
+    }
+
+    private fun removeFolder(folder: File) {
+        removeImages(viewModelStateFlow.value.images.map { it.file }.filter { it.folder == folder }.toSet())
     }
 
     private fun removeUnreadable() {
@@ -272,14 +274,12 @@ class ImagePrepViewModel(
                 selection = remainingSelection.ifEmpty { setOfNotNull(focused) },
                 anchor = state.anchor?.takeIf { it !in targets } ?: focused,
                 isSelectionMode = state.isSelectionMode && remainingSelection.isNotEmpty(),
-                sourceFolder = if (images.isEmpty()) null else state.sourceFolder,
                 lastRemoval = ImagePrepViewModelState.Removal(
                     entries = removed,
                     focusedFile = state.focusedFile,
                     selection = state.selection,
                     anchor = state.anchor,
                     isSelectionMode = state.isSelectionMode,
-                    sourceFolder = state.sourceFolder,
                 ),
                 removedFiles = state.removedFiles + removed.map { it.value.file },
             )
@@ -305,12 +305,12 @@ class ImagePrepViewModel(
             val focused = before.focusedFile?.takeIf { it in presentAfterRestore } ?: restoredFiles.first()
             val selection = before.selection.filter { it in presentAfterRestore }.toSet()
             state.copy(
-                images = images,
+                // 削除後に同じフォルダの画像を追加していても、フォルダごとのまとまりを崩さない
+                images = images.groupedByFolder(),
                 focusedFile = focused,
                 selection = selection.ifEmpty { setOf(focused) },
                 anchor = before.anchor?.takeIf { it in presentAfterRestore } ?: focused,
                 isSelectionMode = before.isSelectionMode && selection.isNotEmpty(),
-                sourceFolder = if (state.images.isEmpty()) before.sourceFolder else state.sourceFolder,
                 lastRemoval = null,
                 removedFiles = state.removedFiles - restoredFiles.toSet(),
             )
@@ -644,8 +644,8 @@ private val EmptyPreview = PreviewState(
 )
 
 internal data class ImagePrepViewModelState(
+    /** 同じフォルダの画像が続けて並ぶ（[groupedByFolder]） */
     val images: List<ImageItem> = emptyList(),
-    val sourceFolder: File? = null,
     val focusedFile: File? = null,
     /** 一覧で選択中の画像（Shift / Ctrl で複数）。プレビューは [focusedFile] */
     val selection: Set<File> = emptySet(),
@@ -677,14 +677,13 @@ internal data class ImagePrepViewModelState(
         val selection: Set<File>,
         val anchor: File?,
         val isSelectionMode: Boolean,
-        val sourceFolder: File?,
     )
 
     val exportTargets: List<ImageItem>
         get() = if (isSelectionMode) images.filter { it.file in selection } else images
 
     val defaultOutputDir: File?
-        get() = (sourceFolder ?: images.firstOrNull()?.file?.absoluteFile?.parentFile)?.let { File(it, "output") }
+        get() = images.firstOrNull()?.file?.folder?.let { File(it, "output") }
 
     val effectiveSelection: Set<File>
         get() = selection.ifEmpty { setOfNotNull(focusedFile) }
@@ -724,16 +723,19 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
         ) {
             add(Notice("出力先が元画像と同じフォルダです。元画像は上書きされず「(2)」付きの名前で保存されます。接尾辞の設定がおすすめです。", blocking = false, action = null))
         }
+        val targetFolderCount = targets.map { it.file.folder }.distinct().size
+        if (outputDir != null && customOutputDir == null && targetFolderCount > 1) {
+            add(Notice("$targetFolderCount つのフォルダの画像を 1 つの出力先にまとめて書き出します。", blocking = false, action = null))
+        }
     }
-    val folder = sourceFolder
     return ImagePrepUiState(
         images = images,
+        imageGroups = images.groupBy { it.file.folder }.map { (folder, items) -> ImageGroup(folder, items) },
         exportCount = targets.size,
         isExportingSelection = isSelectionMode,
         focusedFile = focusedFile,
         selectedFiles = effectiveSelection,
-        sourceTitle = folder?.name?.ifEmpty { folder.path } ?: if (images.isEmpty()) null else "追加した画像",
-        sourcePath = folder?.absolutePath,
+        pickerInitialDirectory = (focusedFile ?: images.lastOrNull()?.file)?.folder,
         options = options,
         outputDirectory = outputDir,
         isCustomOutputDirectory = customOutputDir != null,
@@ -746,6 +748,11 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
         listener = listener,
     )
 }
+
+private val File.folder: File get() = absoluteFile.parentFile
+
+/** フォルダが最初に現れた順にまとめ、フォルダ内の並びは保つ */
+private fun List<ImageItem>.groupedByFolder(): List<ImageItem> = groupBy { it.file.folder }.values.flatten()
 
 /** "IMG_2.jpg" が "IMG_10.jpg" より前に来る並び順 */
 internal object NaturalOrder : Comparator<File> {

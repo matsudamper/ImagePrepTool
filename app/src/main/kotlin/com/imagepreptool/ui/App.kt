@@ -44,7 +44,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.awtTransferable
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.awt.Component
 import java.awt.datatransfer.DataFlavor
@@ -61,7 +60,6 @@ import com.imagepreptool.resources.ic_add_photo
 import com.imagepreptool.resources.ic_close
 import com.imagepreptool.resources.ic_download
 import com.imagepreptool.resources.ic_extension
-import com.imagepreptool.resources.ic_folder
 import com.imagepreptool.resources.ic_folder_open
 import com.imagepreptool.ui.components.Tooltip
 import com.imagepreptool.ui.theme.AppTheme
@@ -100,11 +98,11 @@ fun App(
     val actions = remember(listener, dialogParent) {
         AppActions(
             openFolder = {
-                DesktopDialogs.pickDirectory(dialogParent, "画像のあるフォルダを選択", latestUiState.sourcePath?.let(::File))
+                DesktopDialogs.pickDirectory(dialogParent, "画像のあるフォルダを選択", latestUiState.pickerInitialDirectory)
                     ?.let(listener::openFolder)
             },
             pickImages = {
-                DesktopDialogs.pickImages(dialogParent, latestUiState.sourcePath?.let(::File))
+                DesktopDialogs.pickImages(dialogParent, latestUiState.pickerInitialDirectory)
                     .takeIf { it.isNotEmpty() }
                     ?.let(listener::addFiles)
             },
@@ -223,7 +221,7 @@ private fun Workspace(
         TopBar(uiState, actions, onShowTools)
         Row(Modifier.weight(1f).fillMaxWidth()) {
             ImageListPanel(
-                images = uiState.images,
+                imageGroups = uiState.imageGroups,
                 focusedFile = uiState.focusedFile,
                 selectedFiles = uiState.selectedFiles,
                 isSelectionMode = uiState.isExportingSelection,
@@ -236,6 +234,8 @@ private fun Workspace(
                 onMoveFocus = uiState.listener::moveFocus,
                 onRemove = uiState.listener::removeImage,
                 onReveal = { file -> DesktopDialogs.revealFile(file)?.let(actions.showMessage) },
+                onOpenFolder = { folder -> DesktopDialogs.openFolder(folder)?.let(actions.showMessage) },
+                onRemoveFolder = uiState.listener::removeFolder,
                 modifier = Modifier.width(312.dp),
             )
             VerticalDivider(color = colors.outlineVariant)
@@ -295,25 +295,7 @@ private fun TopBar(
                 modifier = Modifier.fillMaxWidth().height(52.dp).padding(start = 16.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(painterResource(Res.drawable.ic_folder), null, tint = colors.primary, modifier = Modifier.size(20.dp))
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(
-                        uiState.sourceTitle.orEmpty(),
-                        style = MaterialTheme.typography.titleMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    uiState.sourcePath?.let { path ->
-                        Text(
-                            path,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = colors.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                }
+                Spacer(Modifier.weight(1f))
                 Tooltip("別のフォルダを開く (Ctrl+O)") {
                     IconButton(onClick = actions.openFolder) { Icon(painterResource(Res.drawable.ic_folder_open), "別のフォルダを開く") }
                 }

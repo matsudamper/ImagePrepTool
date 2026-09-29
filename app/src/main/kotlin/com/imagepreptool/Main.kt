@@ -49,7 +49,7 @@ fun main(args: Array<String>) {
                 when (event.key) {
                     Key.O -> {
                         if (ui.export == ExportState.Idle) {
-                            DesktopDialogs.pickDirectory(composeWindow, "画像のあるフォルダを選択", ui.sourcePath?.let(::File))
+                            DesktopDialogs.pickDirectory(composeWindow, "画像のあるフォルダを選択", ui.pickerInitialDirectory)
                                 ?.let(ui.listener::openFolder)
                         }
                         true
