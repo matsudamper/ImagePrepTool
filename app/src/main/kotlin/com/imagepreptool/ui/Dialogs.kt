@@ -278,7 +278,7 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
                                 if (status.available) status.detail else "${status.detail} · ${installHint(status.tool)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
+                                maxLines = 3,
                                 overflow = TextOverflow.Ellipsis,
                             )
                         }
@@ -288,7 +288,7 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            "HEIC は heif-dec / heif-convert / magick のいずれか 1 つがあれば読み込めます。インストール後は「再確認」を押してください。",
+            "HEIC は heif-dec / heif-convert / magick のいずれか 1 つがあれば読み込めます。インストール後はアプリを再起動するか、PATH を更新したうえで「再確認」を押してください。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -296,7 +296,7 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
 }
 
 private fun installHint(tool: ExternalTool): String = when (tool) {
-    ExternalTool.Cwebp -> "libwebp に含まれます"
-    ExternalTool.HeifDec, ExternalTool.HeifConvert -> "libheif に含まれます"
-    ExternalTool.Magick -> "ImageMagick に含まれます"
+    ExternalTool.Cwebp -> "libwebp に含まれます。winget search webp で探すか、公式配布の libwebp を PATH に追加してください"
+    ExternalTool.HeifDec, ExternalTool.HeifConvert -> "libheif に含まれます。winget では magick（ImageMagick）の導入が簡単です"
+    ExternalTool.Magick -> "winget install ImageMagick.ImageMagick（HEIC 対応版）"
 }
