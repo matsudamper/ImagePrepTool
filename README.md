@@ -41,16 +41,11 @@
 ./gradlew build
 ```
 
-### Windows 単体 EXE（Java 不要で配布）
+### Windows インストーラ EXE（Java 不要で配布）
 
-Windows 上で実行します。JRE は EXE / 配布フォルダに同梱されます。
+Windows 上で `gradlew.bat :app:packageReleaseExe` を実行すると `app/build/compose/binaries/main-release/exe/` に出力されます。JRE は同梱されます。
 
-| 成果物 | コマンド | 説明 |
-|--------|----------|------|
-| インストーラ EXE | `gradlew.bat :app:packageReleaseExe` | `app/build/compose/binaries/main-release/exe/` |
-| ポータブル | `gradlew.bat :app:packagePortableWindowsExe` | `app/build/compose/binaries/main-release/portable/` |
-
-CI では `windows-latest` ジョブが上記をビルドし、Artifacts にアップロードします。
+CI では `windows-latest` ジョブがビルドし、Artifacts にアップロードします。バージョンのパッチ番号に CI のビルド番号を使うため、新しいインストーラを実行するだけで既存のインストールを上書き更新できます。
 
 デスクトップ実行（開発時・GUI 環境）:
 
