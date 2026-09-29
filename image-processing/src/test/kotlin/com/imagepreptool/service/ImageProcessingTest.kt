@@ -220,8 +220,15 @@ class ImageProcessingTest {
     @Test
     fun longNameWithSuffixIsShortened() {
         val name = OutputPlanner.outputName(File("${"あ".repeat(80)}.jpg"), OutputFormat.Jpeg, "_" + "x".repeat(39))
-        assertTrue(name.toByteArray(Charsets.UTF_8).size <= 255 - 12, name)
+        assertTrue(OutputPlanner.nameLength(name, windows = System.getProperty("os.name").lowercase().contains("win")) <= 255 - 12, name)
         assertTrue(name.endsWith("_" + "x".repeat(39) + ".jpg"))
+    }
+
+    @Test
+    fun nameLengthUsesUtf16OnWindows() {
+        // Windows では日本語 120 文字も 120 単位として数え、不要に短くしない
+        assertEquals(120, OutputPlanner.nameLength("あ".repeat(120), windows = true))
+        assertEquals(360, OutputPlanner.nameLength("あ".repeat(120), windows = false))
     }
 
     @Test

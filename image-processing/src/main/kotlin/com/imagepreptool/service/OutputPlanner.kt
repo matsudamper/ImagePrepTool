@@ -17,8 +17,9 @@ data class PlannedOutput(
 
 object OutputPlanner {
 
-    private const val MAX_NAME_BYTES = 255
-    private const val RENAME_MARGIN_BYTES = 12
+    private const val MAX_NAME_UNITS = 255
+    private const val RENAME_MARGIN_UNITS = 12
+    private val isWindows = System.getProperty("os.name").orEmpty().lowercase().contains("win")
 
     fun resolveFormat(source: File, selected: OutputFormat): OutputFormat {
         if (selected != OutputFormat.Original) return selected
@@ -41,18 +42,21 @@ object OutputPlanner {
     }
 
     /**
-     * 多くのファイルシステムはファイル名を 255 バイトまでしか許さないため、元の名前を削って収める。
-     * 重複時に付ける「 (2)」などの分の余裕を残す
+     * ファイル名の上限（Windows/NTFS は UTF-16 で 255 単位、多くの Unix 系は UTF-8 で 255 バイト）を超えないよう、
+     * 元の名前を削って収める。重複時に付ける「 (2)」などの分の余裕を残す
      */
     private fun fitNameLength(base: String, tail: String): String {
-        val limit = MAX_NAME_BYTES - RENAME_MARGIN_BYTES
+        val limit = MAX_NAME_UNITS - RENAME_MARGIN_UNITS
         var trimmed = base
-        while (trimmed.isNotEmpty() && (trimmed + tail).toByteArray(Charsets.UTF_8).size > limit) {
+        while (trimmed.isNotEmpty() && nameLength(trimmed + tail, isWindows) > limit) {
             // サロゲートペア（絵文字など）を途中で切らないよう、コードポイント単位で削る
             trimmed = trimmed.substring(0, trimmed.offsetByCodePoints(trimmed.length, -1))
         }
         return trimmed + tail
     }
+
+    internal fun nameLength(name: String, windows: Boolean): Int =
+        if (windows) name.length else name.toByteArray(Charsets.UTF_8).size
 
     /**
      * 出力ファイルを決める。バッチ内で名前が重なる場合と、[protectedFiles]（元画像）を上書きしそうな場合は常に別名にする。
