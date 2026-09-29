@@ -24,7 +24,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
@@ -83,7 +82,6 @@ fun PreviewPane(
     index: Int,
     total: Int,
     options: EditOptions,
-    onToggleInclusion: () -> Unit,
     onMove: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -100,15 +98,13 @@ fun PreviewPane(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (item != null) {
-                    Checkbox(checked = item.included, onCheckedChange = { onToggleInclusion() })
-                    Column(Modifier.weight(1f)) {
-                        Text(item.file.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            if (item.included) "書き出しに含める" else "書き出しから外しています",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Text(
+                        item.file.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(start = 8.dp),
+                    )
                     Text(
                         "${index + 1} / $total",
                         style = MaterialTheme.typography.labelMedium.merge(MonoNumberStyle),

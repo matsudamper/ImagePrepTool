@@ -67,15 +67,13 @@ class ImagePrepViewModel(
         override fun forgetRecent(dir: File) = this@ImagePrepViewModel.forgetRecent(dir)
         override fun closeAll() = this@ImagePrepViewModel.closeAll()
         override fun clickImage(file: File, mode: SelectMode) = this@ImagePrepViewModel.clickImage(file, mode)
-        override fun toggleIncluded(file: File) = this@ImagePrepViewModel.toggleIncluded(file)
-        override fun toggleFocusedIncluded() = this@ImagePrepViewModel.toggleFocusedIncluded()
-        override fun setSelectionIncluded(included: Boolean) = this@ImagePrepViewModel.setSelectionIncluded(included)
-        override fun setAllIncluded(included: Boolean) = this@ImagePrepViewModel.setAllIncluded(included)
         override fun selectAll() = this@ImagePrepViewModel.selectAll()
         override fun clearSelection() = this@ImagePrepViewModel.clearSelection()
         override fun moveFocus(delta: Int) = this@ImagePrepViewModel.moveFocus(delta)
         override fun removeImage(file: File) = this@ImagePrepViewModel.removeImage(file)
-        override fun excludeUnreadable() = this@ImagePrepViewModel.excludeUnreadable()
+        override fun removeSelection() = this@ImagePrepViewModel.removeSelection()
+        override fun removeUnreadable() = this@ImagePrepViewModel.removeUnreadable()
+        override fun undoRemoval() = this@ImagePrepViewModel.undoRemoval()
         override fun updateOptions(transform: (EditOptions) -> EditOptions) = this@ImagePrepViewModel.updateOptions(transform)
         override fun setInputValid(field: String, valid: Boolean) = this@ImagePrepViewModel.setInputValid(field, valid)
         override fun chooseOutputDirectory(dir: File) = this@ImagePrepViewModel.chooseOutputDirectory(dir)
@@ -95,10 +93,9 @@ class ImagePrepViewModel(
             }
         }.asStateFlow()
 
-    private val messageChannel = Channel<String>(Channel.BUFFERED)
+    private val messageChannel = Channel<SnackbarMessage>(Channel.BUFFERED)
 
-    /** スナックバーで一度だけ表示するメッセージ */
-    val messages: Flow<String> = messageChannel.receiveAsFlow()
+    val messages: Flow<SnackbarMessage> = messageChannel.receiveAsFlow()
 
     private var exportJob: Job? = null
     private var loadJob: Job? = null
@@ -139,16 +136,19 @@ class ImagePrepViewModel(
                 finishLoading(generation)
             }
             if (files.isEmpty()) {
-                messageChannel.send("「${dir.name}」に読み込める画像がありません")
+                messageChannel.send(SnackbarMessage("「${dir.name}」に読み込める画像がありません"))
                 return@launch
             }
             mutate {
                 it.copy(
-                    images = files.map { ImageItem(it, included = true) },
+                    images = files.map(::ImageItem),
                     sourceFolder = dir,
                     focusedFile = files.first(),
                     selection = setOf(files.first()),
                     anchor = files.first(),
+                    isSelectionMode = false,
+                    lastRemoval = null,
+                    removedFiles = emptySet(),
                 )
             }
             rememberRecent(dir)
@@ -179,7 +179,7 @@ class ImagePrepViewModel(
             val added = supported.map { it.absoluteFile }.distinct().filter { it !in existing }
             mutate { state ->
                 state.copy(
-                    images = state.images + added.map { ImageItem(it, included = true) },
+                    images = state.images + added.map(::ImageItem),
                     sourceFolder = if (state.images.isEmpty()) null else state.sourceFolder,
                     focusedFile = state.focusedFile ?: added.firstOrNull(),
                 )
@@ -189,7 +189,7 @@ class ImagePrepViewModel(
                 if (supported.size > added.size) add("${supported.size - added.size} 枚は追加済みです")
                 if (ignored > 0) add("非対応の $ignored 件を除外しました")
             }.ifEmpty { listOf("追加できる画像がありません") }
-            messageChannel.send(message.joinToString("・"))
+            messageChannel.send(SnackbarMessage(message.joinToString("・")))
         }
     }
 
@@ -201,14 +201,18 @@ class ImagePrepViewModel(
     private fun rejectWhileExporting(): Boolean {
         val export = viewModelStateFlow.value.export
         val busy = export is ExportState.Preparing || export is ExportState.Running || export is ExportState.ConfirmConflicts
-        if (busy) messageChannel.trySend("書き出しが終わってから画像を読み込んでください")
+        if (busy) messageChannel.trySend(SnackbarMessage("書き出しが終わってから画像を読み込んでください"))
         return busy
     }
 
     internal fun snapshotForTest(): ImagePrepUiState = viewModelStateFlow.value.toUiState(listener)
 
     internal fun addFilesForTest(files: List<File>) {
-        mutate { it.copy(images = files.map { file -> ImageItem(file, included = true) }, focusedFile = files.firstOrNull()) }
+        mutate { it.copy(images = files.map(::ImageItem), focusedFile = files.firstOrNull()) }
+    }
+
+    internal fun setToolsForTest(tools: ExternalTools) {
+        mutate { it.copy(tools = tools) }
     }
 
     private fun closeAll() {
@@ -216,29 +220,99 @@ class ImagePrepViewModel(
         val export = viewModelStateFlow.value.export
         if (export is ExportState.Preparing || export is ExportState.Running || exportJob?.isActive == true) return
         loadJob?.cancel()
-        mutate { it.copy(images = emptyList(), sourceFolder = null, focusedFile = null, selection = emptySet(), anchor = null, export = ExportState.Idle) }
+        mutate {
+            it.copy(
+                images = emptyList(),
+                sourceFolder = null,
+                focusedFile = null,
+                selection = emptySet(),
+                anchor = null,
+                isSelectionMode = false,
+                export = ExportState.Idle,
+                lastRemoval = null,
+                removedFiles = emptySet(),
+            )
+        }
     }
 
-    /** [file] が複数選択に含まれていれば選択中の全画像を一覧から外す */
+    /** [file] が複数選択に含まれていれば選択中の全画像を一覧から削除する */
     private fun removeImage(file: File) {
+        removeImages(viewModelStateFlow.value.targetsFor(file))
+    }
+
+    private fun removeSelection() {
+        removeImages(viewModelStateFlow.value.effectiveSelection)
+    }
+
+    private fun removeUnreadable() {
+        val state = viewModelStateFlow.value
+        val tools = state.tools ?: return
+        removeImages(state.exportTargets.map { it.file }.filter { !state.canRead(it, tools) }.toSet())
+    }
+
+    private fun removeImages(targets: Set<File>) {
+        val before = viewModelStateFlow.value
         mutate { state ->
-            val targets = state.targetsFor(file)
-            val index = state.images.indexOfFirst { it.file == file }
-            if (index < 0) return@mutate state
+            val removed = state.images.withIndex().filter { it.value.file in targets }
+            if (removed.isEmpty()) return@mutate state
             val images = state.images.filter { it.file !in targets }
             val focused = if (state.focusedFile in targets) {
                 // 消した位置の次にある画像をプレビューする
-                val after = state.images.drop(index).firstOrNull { it.file !in targets }
+                val firstRemovedIndex = removed.first().index
+                val after = state.images.drop(firstRemovedIndex).firstOrNull { it.file !in targets }
                 (after ?: images.lastOrNull())?.file
             } else {
                 state.focusedFile
             }
+            // 選択の一部だけを削除したときは残りの選択を保ち、書き出し対象が一覧全体に広がらないようにする
+            val remainingSelection = state.selection - targets
             state.copy(
                 images = images,
                 focusedFile = focused,
-                selection = setOfNotNull(focused),
-                anchor = focused,
+                selection = remainingSelection.ifEmpty { setOfNotNull(focused) },
+                anchor = state.anchor?.takeIf { it !in targets } ?: focused,
+                isSelectionMode = state.isSelectionMode && remainingSelection.isNotEmpty(),
                 sourceFolder = if (images.isEmpty()) null else state.sourceFolder,
+                lastRemoval = ImagePrepViewModelState.Removal(
+                    entries = removed,
+                    focusedFile = state.focusedFile,
+                    selection = state.selection,
+                    anchor = state.anchor,
+                    isSelectionMode = state.isSelectionMode,
+                    sourceFolder = state.sourceFolder,
+                ),
+                removedFiles = state.removedFiles + removed.map { it.value.file },
+            )
+        }
+        val removedCount = before.images.size - viewModelStateFlow.value.images.size
+        if (removedCount > 0) {
+            messageChannel.trySend(SnackbarMessage("$removedCount 枚を一覧から削除しました", canUndoRemoval = true))
+        }
+    }
+
+    /** 直前の削除を取り消し、画像を元の位置に、選択とプレビューを削除前の状態に戻す */
+    private fun undoRemoval() {
+        mutate { state ->
+            val removal = state.lastRemoval ?: return@mutate state
+            val present = state.images.map { it.file }.toSet()
+            val restoring = removal.entries.filter { it.value.file !in present }
+            if (restoring.isEmpty()) return@mutate state.copy(lastRemoval = null)
+            val images = state.images.toMutableList()
+            restoring.forEach { (index, item) -> images.add(index.coerceAtMost(images.size), item) }
+            val restoredFiles = restoring.map { it.value.file }
+            val presentAfterRestore = present + restoredFiles
+            val before = removal
+            val focused = before.focusedFile?.takeIf { it in presentAfterRestore } ?: restoredFiles.first()
+            val selection = before.selection.filter { it in presentAfterRestore }.toSet()
+            state.copy(
+                images = images,
+                focusedFile = focused,
+                selection = selection.ifEmpty { setOf(focused) },
+                anchor = before.anchor?.takeIf { it in presentAfterRestore } ?: focused,
+                isSelectionMode = before.isSelectionMode && selection.isNotEmpty(),
+                sourceFolder = if (state.images.isEmpty()) before.sourceFolder else state.sourceFolder,
+                lastRemoval = null,
+                removedFiles = state.removedFiles - restoredFiles.toSet(),
             )
         }
     }
@@ -270,32 +344,34 @@ class ImagePrepViewModel(
     private fun clickImage(file: File, mode: SelectMode) {
         mutate { state ->
             when (mode) {
-                SelectMode.Single -> state.copy(focusedFile = file, selection = setOf(file), anchor = file)
+                SelectMode.Single -> state.copy(focusedFile = file, selection = setOf(file), anchor = file, isSelectionMode = false)
                 SelectMode.Toggle -> {
                     val base = state.effectiveSelection
+                    val selection = if (file in base) base - file else base + file
                     state.copy(
-                        selection = if (file in base) base - file else base + file,
+                        selection = selection,
                         anchor = file,
+                        isSelectionMode = selection.size > 1 || (state.isSelectionMode && selection.isNotEmpty()),
                         focusedFile = state.focusedFile ?: file,
                     )
                 }
                 SelectMode.Range -> {
                     val from = state.images.indexOfFirst { it.file == (state.anchor ?: state.focusedFile) }
                     val to = state.images.indexOfFirst { it.file == file }
-                    if (from < 0 || to < 0) return@mutate state.copy(focusedFile = file, selection = setOf(file), anchor = file)
+                    if (from < 0 || to < 0) return@mutate state.copy(focusedFile = file, selection = setOf(file), anchor = file, isSelectionMode = false)
                     val range = state.images.subList(minOf(from, to), maxOf(from, to) + 1).map { it.file }
-                    state.copy(selection = range.toSet(), focusedFile = state.focusedFile ?: file)
+                    state.copy(selection = range.toSet(), focusedFile = state.focusedFile ?: file, isSelectionMode = range.size > 1)
                 }
             }
         }
     }
 
     private fun selectAll() {
-        mutate { state -> state.copy(selection = state.images.map { it.file }.toSet()) }
+        mutate { state -> state.copy(selection = state.images.map { it.file }.toSet(), isSelectionMode = state.images.size > 1) }
     }
 
     private fun clearSelection() {
-        mutate { state -> state.copy(selection = setOfNotNull(state.focusedFile), anchor = state.focusedFile) }
+        mutate { state -> state.copy(selection = setOfNotNull(state.focusedFile), anchor = state.focusedFile, isSelectionMode = false) }
     }
 
     private fun moveFocus(delta: Int) {
@@ -303,38 +379,7 @@ class ImagePrepViewModel(
             if (state.images.isEmpty()) return@mutate state
             val current = state.images.indexOfFirst { it.file == state.focusedFile }.coerceAtLeast(0)
             val next = state.images[(current + delta).coerceIn(0, state.images.lastIndex)].file
-            state.copy(focusedFile = next, selection = setOf(next), anchor = next)
-        }
-    }
-
-    /** [file] が複数選択に含まれていれば選択中の全画像を、そうでなければ [file] だけを切り替える */
-    private fun toggleIncluded(file: File) {
-        mutate { state ->
-            val targets = state.targetsFor(file)
-            val included = !(state.images.firstOrNull { it.file == file }?.included ?: true)
-            state.copy(images = state.images.map { if (it.file in targets) it.copy(included = included) else it })
-        }
-    }
-
-    private fun toggleFocusedIncluded() {
-        viewModelStateFlow.value.focusedFile?.let(::toggleIncluded)
-    }
-
-    private fun setSelectionIncluded(included: Boolean) {
-        mutate { state ->
-            val targets = state.effectiveSelection
-            state.copy(images = state.images.map { if (it.file in targets) it.copy(included = included) else it })
-        }
-    }
-
-    private fun setAllIncluded(included: Boolean) {
-        mutate { state -> state.copy(images = state.images.map { it.copy(included = included) }) }
-    }
-
-    private fun excludeUnreadable() {
-        mutate { state ->
-            val tools = state.tools ?: return@mutate state
-            state.copy(images = state.images.map { if (!state.canRead(it.file, tools)) it.copy(included = false) else it })
+            state.copy(focusedFile = next, selection = setOf(next), anchor = next, isSelectionMode = false)
         }
     }
 
@@ -384,18 +429,18 @@ class ImagePrepViewModel(
             val plan = try {
                 withContext(Dispatchers.IO) {
                     OutputPlanner.plan(
-                        sources = state.images.filter { it.included }.map { it.file },
+                        sources = state.exportTargets.map { it.file },
                         outputDir = outputDir,
                         options = state.options,
-                        // 書き出しから外した画像も元画像なので上書きしない
-                        protectedFiles = state.images.map { it.file },
+                        // 書き出さない画像や一覧から削除した画像も元画像なので上書きしない
+                        protectedFiles = state.images.map { it.file } + state.removedFiles,
                     )
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 mutate { it.copy(export = ExportState.Idle) }
-                messageChannel.send("書き出しを開始できません（${e.message ?: e.javaClass.simpleName}）")
+                messageChannel.send(SnackbarMessage("書き出しを開始できません（${e.message ?: e.javaClass.simpleName}）"))
                 return@launch
             }
             // 計画中に閉じられた・取り消された場合は書き出さない
@@ -605,6 +650,11 @@ internal data class ImagePrepViewModelState(
     /** 一覧で選択中の画像（Shift / Ctrl で複数）。プレビューは [focusedFile] */
     val selection: Set<File> = emptySet(),
     val anchor: File? = null,
+    /**
+     * 選択中の画像だけを書き出すかどうか。Ctrl / Shift で複数選択すると有効になる。
+     * 削除で選択が 1 枚に減っても、書き出し対象が一覧全体に広がらないよう枚数とは独立して持つ
+     */
+    val isSelectionMode: Boolean = false,
     val options: EditOptions = EditOptions(),
     val customOutputDir: File? = null,
     val tools: ExternalTools? = null,
@@ -614,7 +664,25 @@ internal data class ImagePrepViewModelState(
     val isLoading: Boolean = false,
     /** 入力欄が不正な値になっている設定項目 */
     val invalidInputs: Set<String> = setOf(),
+    /** 元に戻せる直前の削除 */
+    val lastRemoval: Removal? = null,
+    /** このフォルダを開いてから一覧から削除した画像。元画像なので書き出しで上書きしない */
+    val removedFiles: Set<File> = setOf(),
 ) {
+    class Removal(
+        /** 削除した画像と、削除前の一覧での位置（昇順） */
+        val entries: List<IndexedValue<ImageItem>>,
+        /** ここから下は削除前の選択とプレビューの状態 */
+        val focusedFile: File?,
+        val selection: Set<File>,
+        val anchor: File?,
+        val isSelectionMode: Boolean,
+        val sourceFolder: File?,
+    )
+
+    val exportTargets: List<ImageItem>
+        get() = if (isSelectionMode) images.filter { it.file in selection } else images
+
     val defaultOutputDir: File?
         get() = (sourceFolder ?: images.firstOrNull()?.file?.absoluteFile?.parentFile)?.let { File(it, "output") }
 
@@ -627,32 +695,32 @@ internal data class ImagePrepViewModelState(
 }
 
 internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listener): ImagePrepUiState {
-    val included = images.filter { it.included }
+    val targets = exportTargets
     val outputDir = customOutputDir ?: defaultOutputDir
     val notices = buildList {
         if (invalidInputs.isNotEmpty()) {
             add(Notice("サイズは ${EditOptions.MIN_DIMENSION}〜${EditOptions.MAX_DIMENSION} px で入力してください。", blocking = true, action = null))
         }
         val tools = tools
-        val needsTools = included.any {
+        val needsTools = targets.any {
             ImageLoader.isHeif(it.file) || OutputPlanner.resolveFormat(it.file, options.outputFormat) == OutputFormat.Webp
         }
         if (tools == null && needsTools) {
             add(Notice("外部ツールを確認しています…", blocking = true, action = null))
         }
         if (tools != null) {
-            val needsWebp = included.any { OutputPlanner.resolveFormat(it.file, options.outputFormat) == OutputFormat.Webp }
+            val needsWebp = targets.any { OutputPlanner.resolveFormat(it.file, options.outputFormat) == OutputFormat.Webp }
             if (needsWebp && !tools.canWriteWebp) {
                 add(Notice("WebP で書き出すには cwebp が必要です。形式を変更するか、cwebp をインストールしてください。", blocking = true, action = NoticeAction.ShowTools))
             }
-            val unreadable = included.count { !canRead(it.file, tools) }
+            val unreadable = targets.count { !canRead(it.file, tools) }
             if (unreadable > 0) {
-                add(Notice("HEIC の $unreadable 枚は heif-dec / magick が無いため読み込めません。", blocking = true, action = NoticeAction.ExcludeUnreadable))
+                add(Notice("HEIC の $unreadable 枚は heif-dec / magick が無いため読み込めません。", blocking = true, action = NoticeAction.RemoveUnreadable))
             }
         }
         if (outputDir != null &&
             options.fileNameSuffix.isBlank() &&
-            included.any { it.file.absoluteFile.parentFile?.normalize() == outputDir.absoluteFile.normalize() }
+            targets.any { it.file.absoluteFile.parentFile?.normalize() == outputDir.absoluteFile.normalize() }
         ) {
             add(Notice("出力先が元画像と同じフォルダです。元画像は上書きされず「(2)」付きの名前で保存されます。接尾辞の設定がおすすめです。", blocking = false, action = null))
         }
@@ -660,7 +728,8 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
     val folder = sourceFolder
     return ImagePrepUiState(
         images = images,
-        includedCount = included.size,
+        exportCount = targets.size,
+        isExportingSelection = isSelectionMode,
         focusedFile = focusedFile,
         selectedFiles = effectiveSelection,
         sourceTitle = folder?.name?.ifEmpty { folder.path } ?: if (images.isEmpty()) null else "追加した画像",
