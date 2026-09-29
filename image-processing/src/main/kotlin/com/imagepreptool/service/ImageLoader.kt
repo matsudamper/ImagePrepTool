@@ -78,7 +78,7 @@ object ImageLoader {
     private fun loadHeif(file: File, tools: ExternalTools, maxDimension: Int?): LoadedImage {
         val decoder = tools.heifDecoder
             ?: throw ImageLoadException("HEIC の読み込みには heif-dec または magick が必要です")
-        val temp = Files.createTempFile("imageprep-heif-", if (decoder == ExternalTool.Magick) ".png" else ".jpg").toFile()
+        val temp = Files.createTempFile("imageprep-heif-", if (decoder == ExternalTool.Magick) ".png" else ".jpg").toFile().apply { deleteOnExit() }
         try {
             val command = when (decoder) {
                 ExternalTool.Magick -> listOf(decoder.command, file.absolutePath, temp.absolutePath)

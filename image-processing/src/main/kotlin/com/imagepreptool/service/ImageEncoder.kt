@@ -54,7 +54,7 @@ object ImageEncoder {
 
     private fun writeWebp(image: BufferedImage, quality: Int, file: File, tools: ExternalTools) {
         if (!tools.canWriteWebp) throw IOException("WebP の書き出しには cwebp が必要です")
-        val png = Files.createTempFile("imageprep-", ".png").toFile()
+        val png = Files.createTempFile("imageprep-", ".png").toFile().apply { deleteOnExit() }
         try {
             if (!ImageIO.write(image, "png", png)) throw IOException("一時ファイルを書き出せません")
             writeAtomically(file) { temp ->
@@ -85,6 +85,7 @@ object ImageEncoder {
         // createTempFile は 0600 で作られ移動後も残るため、通常の権限（umask 依存）で新規作成する
         val temp = generateSequence { File(file.absoluteFile.parentFile, ".${file.name}.${UUID.randomUUID()}.tmp") }
             .first { it.createNewFile() }
+            .apply { deleteOnExit() }
         try {
             block(temp)
             if (!temp.isFile || temp.length() == 0L) throw IOException("書き出し結果が空です")
