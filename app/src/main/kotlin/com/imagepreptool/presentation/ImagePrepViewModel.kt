@@ -101,6 +101,7 @@ class ImagePrepViewModel(
 
     private var exportJob: Job? = null
     private var loadJob: Job? = null
+    private var pendingExportSettings: Pair<EditOptions, ExternalTools?>? = null
     private val previewCache = Collections.synchronizedMap(
         object : LinkedHashMap<String, PreviewSource>(8, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, PreviewSource>?) = size > 4
@@ -380,9 +381,11 @@ class ImagePrepViewModel(
             // 計画中に閉じられた・取り消された場合は書き出さない
             if (viewModelStateFlow.value.export != ExportState.Preparing) return@launch
             if (plan.any { it.exists }) {
+                // 同名確認の後も、要求した時点の設定で書き出す
+                pendingExportSettings = state.options to state.tools
                 mutate { it.copy(export = ExportState.ConfirmConflicts(plan)) }
             } else {
-                startExport(plan, outputDir)
+                startExport(plan, outputDir, state.options, state.tools)
             }
         }
     }
@@ -390,11 +393,15 @@ class ImagePrepViewModel(
     private fun resolveConflicts(policy: ConflictPolicy?) {
         val confirm = viewModelStateFlow.value.export as? ExportState.ConfirmConflicts ?: return
         if (policy == null) {
+            pendingExportSettings = null
             mutate { it.copy(export = ExportState.Idle) }
             return
         }
         val outputDir = confirm.plan.first().target.parentFile
-        startExport(OutputPlanner.applyPolicy(confirm.plan, policy), outputDir)
+        val current = viewModelStateFlow.value
+        val (options, tools) = pendingExportSettings ?: (current.options to current.tools)
+        pendingExportSettings = null
+        startExport(OutputPlanner.applyPolicy(confirm.plan, policy), outputDir, options, tools)
     }
 
     private fun cancelExport() {
@@ -408,10 +415,9 @@ class ImagePrepViewModel(
         mutate { it.copy(export = ExportState.Idle) }
     }
 
-    private fun startExport(plan: List<PlannedOutput>, outputDir: File) {
-        val state = viewModelStateFlow.value
-        val options = state.options
-        val processor = ImageProcessor(state.tools ?: ExternalTools.None)
+    /** 書き出しは [options] と [tools]（要求した時点の値）で行い、準備中・実行中の設定変更は反映しない */
+    private fun startExport(plan: List<PlannedOutput>, outputDir: File, options: EditOptions, tools: ExternalTools?) {
+        val processor = ImageProcessor(tools ?: ExternalTools.None)
         val results = Collections.synchronizedList(mutableListOf<ProcessResult>())
         mutate { it.copy(export = ExportState.Running(done = 0, total = plan.size, currentName = plan.firstOrNull()?.source?.name, cancelling = false)) }
 

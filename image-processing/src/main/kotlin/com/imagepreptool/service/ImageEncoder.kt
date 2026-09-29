@@ -5,6 +5,7 @@ import java.awt.image.BufferedImage
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
+import java.util.UUID
 import javax.imageio.IIOImage
 import javax.imageio.ImageIO
 import javax.imageio.ImageWriteParam
@@ -80,8 +81,10 @@ object ImageEncoder {
 
     /** 途中で失敗しても壊れたファイルを残さないよう、一時ファイルに書いてから置き換える */
     private fun writeAtomically(file: File, block: (File) -> Unit) {
-        // 既存ファイルや同時に動く書き出しとぶつからないよう、処理ごとに一意な名前にする
-        val temp = Files.createTempFile(file.absoluteFile.parentFile.toPath(), ".${file.name}.", ".tmp").toFile()
+        // 既存ファイルや同時に動く書き出しとぶつからないよう、処理ごとに一意な名前にする。
+        // createTempFile は 0600 で作られ移動後も残るため、通常の権限（umask 依存）で新規作成する
+        val temp = generateSequence { File(file.absoluteFile.parentFile, ".${file.name}.${UUID.randomUUID()}.tmp") }
+            .first { it.createNewFile() }
         try {
             block(temp)
             if (!temp.isFile || temp.length() == 0L) throw IOException("書き出し結果が空です")

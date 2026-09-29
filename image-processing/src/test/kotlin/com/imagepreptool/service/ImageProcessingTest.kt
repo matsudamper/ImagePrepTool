@@ -2,6 +2,7 @@ package com.imagepreptool.service
 
 import java.awt.image.BufferedImage
 import java.io.File
+import java.nio.file.FileSystems
 import java.nio.file.Files
 import javax.imageio.ImageIO
 import kotlin.test.AfterTest
@@ -194,6 +195,14 @@ class ImageProcessingTest {
         assertEquals(600, written.width)
         assertEquals(400, written.height)
         assertFalse(out.listFiles().orEmpty().any { it.name.endsWith(".tmp") })
+        // 出力は通常の新規ファイルと同じ権限になる（一時ファイル用の 0600 を引き継がない）
+        if (FileSystems.getDefault().supportedFileAttributeViews().contains("posix")) {
+            val reference = File(out, "reference").apply { createNewFile() }
+            assertEquals(
+                Files.getPosixFilePermissions(reference.toPath()),
+                Files.getPosixFilePermissions(File(out, "alpha_web.jpg").toPath()),
+            )
+        }
     }
 
     @Test
