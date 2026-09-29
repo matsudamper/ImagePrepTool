@@ -22,6 +22,9 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+
       - name: ktlint
         run: ./gradlew ktlintCheck --continue --no-daemon
 
@@ -39,6 +42,9 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+
       - name: Build and test
         run: ./gradlew build --no-daemon
 
@@ -55,6 +61,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
 
       - name: Package portable Windows app (primary artifact)
         run: .\gradlew.bat :app:packagePortableWindowsExe --no-daemon
