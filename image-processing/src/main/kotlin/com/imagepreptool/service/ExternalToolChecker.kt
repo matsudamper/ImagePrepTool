@@ -1,48 +1,22 @@
 package com.imagepreptool.service
 
 import java.io.IOException
-import java.util.concurrent.TimeUnit
+import com.imagepreptool.model.ExternalTool
 import com.imagepreptool.model.ExternalToolStatus
+import com.imagepreptool.model.ExternalTools
 
 object ExternalToolChecker {
 
-    private val trackedTools = listOf(
-        "cwebp" to listOf("-version"),
-        "dwebp" to listOf("-version"),
-        "magick" to listOf("-version"),
-        "heif-convert" to listOf("--help"),
-    )
+    fun checkAll(): ExternalTools = ExternalTools(ExternalTool.entries.map(::check))
 
-    fun checkAll(): List<ExternalToolStatus> =
-        trackedTools.map { (name, args) -> checkTool(name, args) }
-
-    fun checkTool(name: String, versionArgs: List<String> = listOf("-version")): ExternalToolStatus {
-        val command = resolveCommand(name)
-        return try {
-            val process = ProcessBuilder(listOf(command) + versionArgs)
-                .redirectErrorStream(true)
-                .start()
-            val finished = process.waitFor(8, TimeUnit.SECONDS)
-            if (!finished) {
-                process.destroyForcibly()
-                ExternalToolStatus(name, command, false, "タイムアウト")
-            } else if (process.exitValue() == 0) {
-                val output = process.inputStream.bufferedReader().readText().lineSequence().firstOrNull().orEmpty()
-                ExternalToolStatus(name, command, true, output.ifBlank { "利用可能" })
-            } else {
-                ExternalToolStatus(name, command, false, "終了コード ${process.exitValue()}")
-            }
-        } catch (e: IOException) {
-            ExternalToolStatus(name, command, false, e.message ?: "実行不可")
-        }
+    fun check(tool: ExternalTool): ExternalToolStatus = try {
+        // 起動できれば PATH 上に存在するとみなす（--version の終了コードはツールごとにまちまち）
+        val result = ProcessRunner.run(listOf(tool.command, tool.versionArg), timeoutSeconds = 10)
+        val firstLine = result.output.lineSequence().map { it.trim() }.firstOrNull { it.isNotEmpty() }
+        ExternalToolStatus(tool, available = true, detail = firstLine ?: "利用可能")
+    } catch (e: IOException) {
+        ExternalToolStatus(tool, available = false, detail = "PATH に見つかりません")
+    } catch (e: ExternalCommandException) {
+        ExternalToolStatus(tool, available = false, detail = e.message.orEmpty())
     }
-
-    fun resolveCommand(name: String): String {
-        if (System.getProperty("os.name").lowercase().contains("win")) {
-            return "$name.exe"
-        }
-        return name
-    }
-
-    fun isAvailable(name: String): Boolean = checkTool(name).available
 }

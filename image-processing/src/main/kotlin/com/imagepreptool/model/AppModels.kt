@@ -1,54 +1,128 @@
 package com.imagepreptool.model
 
 import java.io.File
-import java.nio.file.Path
 
-enum class WorkflowStep(val label: String) {
-    Select("Step1: 選択"),
-    Edit("Step2: 編集と出力"),
+enum class ResizeMode(val label: String) {
+    None("元のサイズ"),
+    LongEdge("長辺"),
+    Fit("幅×高さ"),
 }
 
-enum class ExifTextPosition(val label: String) {
+enum class OutputFormat(val label: String, val extension: String, val lossy: Boolean) {
+    Original("元の形式", "", lossy = true),
+    Jpeg("JPEG", "jpg", lossy = true),
+    Png("PNG", "png", lossy = false),
+    Webp("WebP", "webp", lossy = true),
+}
+
+/** キャプションのテンプレートに埋め込める撮影情報 */
+enum class CaptionField(val key: String, val label: String) {
+    Camera("camera", "カメラ"),
+    Make("make", "メーカー"),
+    Model("model", "機種"),
+    Lens("lens", "レンズ"),
+    FocalLength("focal", "焦点距離"),
+    FocalLength35("focal35", "35mm 換算焦点距離"),
+    Aperture("aperture", "F 値"),
+    Shutter("shutter", "シャッター速度"),
+    Iso("iso", "ISO 感度"),
+    ExposureBias("ev", "露出補正"),
+    Date("date", "撮影日"),
+    DateTime("datetime", "撮影日時"),
+    Artist("artist", "撮影者"),
+    Copyright("copyright", "著作権"),
+    FileName("filename", "ファイル名"),
+    ;
+
+    val token: String get() = "{$key}"
+
+    companion object {
+        fun fromKey(key: String): CaptionField? = entries.firstOrNull { it.key == key }
+    }
+}
+
+enum class CaptionPosition(val label: String) {
     TopLeft("左上"),
     TopRight("右上"),
     BottomLeft("左下"),
     BottomRight("右下"),
 }
 
-enum class OutputFormat(val label: String, val extension: String) {
-    KeepOriginal("元の形式", ""),
-    Jpeg("JPEG", "jpg"),
-    Webp("WebP", "webp"),
-    Png("PNG", "png"),
+enum class CaptionStyle(val label: String) {
+    Plate("背景付き"),
+    Shadow("影付き"),
 }
 
-data class ImageSelection(
-    val file: File,
-    val selected: Boolean = true,
-)
+enum class ConflictPolicy(val label: String) {
+    Rename("別名で保存"),
+    Overwrite("上書き"),
+    Skip("スキップ"),
+}
 
 data class EditOptions(
-    val maxWidth: Int? = 1920,
-    val maxHeight: Int? = 1080,
-    val keepAspectRatio: Boolean = true,
-    val outputFormat: OutputFormat = OutputFormat.KeepOriginal,
-    val burnExifText: Boolean = true,
-    val exifPosition: ExifTextPosition = ExifTextPosition.BottomRight,
-    val exifFontSize: Int = 24,
-    val exifMargin: Int = 16,
-    val customExifLine: String = "",
-)
+    val resizeMode: ResizeMode = ResizeMode.LongEdge,
+    val longEdge: Int = 2048,
+    val fitWidth: Int = 1920,
+    val fitHeight: Int = 1080,
+    /** 指定サイズより小さい画像は拡大しない */
+    val onlyScaleDown: Boolean = true,
+    val outputFormat: OutputFormat = OutputFormat.Jpeg,
+    val quality: Int = 85,
+    val captionEnabled: Boolean = true,
+    /** `{camera}` などの項目を撮影情報に置き換える。改行で複数行にできる */
+    val captionTemplate: String = DEFAULT_CAPTION_TEMPLATE,
+    val captionPosition: CaptionPosition = CaptionPosition.BottomRight,
+    /** 画像の短辺に対する文字の高さ（%） */
+    val captionSizePercent: Float = 2.5f,
+    val captionStyle: CaptionStyle = CaptionStyle.Plate,
+    val fileNameSuffix: String = "",
+) {
+    companion object {
+        const val MIN_DIMENSION = 16
+        const val MAX_DIMENSION = 16384
+        const val MIN_CAPTION_PERCENT = 1f
+        const val MAX_CAPTION_PERCENT = 8f
+        const val DEFAULT_CAPTION_TEMPLATE = "{camera}  ·  {lens}\n{focal}  ·  {aperture}  ·  {shutter}  ·  {iso}"
+    }
+}
+
+data class ImageSize(val width: Int, val height: Int) {
+    override fun toString(): String = "$width × $height"
+}
 
 data class ProcessResult(
     val source: File,
-    val success: Boolean,
-    val outputPath: Path? = null,
+    val output: File?,
+    val status: Status,
     val message: String,
-)
+) {
+    enum class Status { Success, Skipped, Failed }
+}
+
+enum class ExternalTool(val command: String, val versionArg: String, val purpose: String) {
+    Cwebp("cwebp", "-version", "WebP 形式での書き出し"),
+    HeifDec("heif-dec", "--version", "HEIC / HEIF の読み込み"),
+    HeifConvert("heif-convert", "--version", "HEIC / HEIF の読み込み（旧名）"),
+    Magick("magick", "-version", "HEIC / HEIF の読み込み（代替）"),
+}
 
 data class ExternalToolStatus(
-    val name: String,
-    val command: String,
+    val tool: ExternalTool,
     val available: Boolean,
     val detail: String,
 )
+
+data class ExternalTools(val statuses: List<ExternalToolStatus>) {
+    fun isAvailable(tool: ExternalTool): Boolean = statuses.any { it.tool == tool && it.available }
+
+    val canWriteWebp: Boolean get() = isAvailable(ExternalTool.Cwebp)
+
+    /** HEIF のデコードに使えるツール（優先順） */
+    val heifDecoder: ExternalTool?
+        get() = listOf(ExternalTool.HeifDec, ExternalTool.HeifConvert, ExternalTool.Magick)
+            .firstOrNull(::isAvailable)
+
+    companion object {
+        val None = ExternalTools(emptyList())
+    }
+}

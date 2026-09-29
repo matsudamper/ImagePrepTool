@@ -14,11 +14,18 @@ kotlin {
 dependencies {
     implementation(project(":image-processing"))
     implementation(compose.desktop.currentOs)
-    implementation(compose.materialIconsExtended)
+    implementation(compose.material3)
+    implementation(compose.components.resources)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.9.0")
     implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.8.4")
     testImplementation(kotlin("test"))
+}
+
+compose.resources {
+    publicResClass = false
+    packageOfResClass = "com.imagepreptool.resources"
+    generateResClass = always
 }
 
 compose.desktop {
@@ -29,11 +36,14 @@ compose.desktop {
             isEnabled.set(false)
         }
 
+        jvmArgs += listOf("-Xmx3g", "-Dfile.encoding=UTF-8")
+
         nativeDistributions {
             targetFormats(TargetFormat.Exe)
+            modules("java.instrument", "java.prefs", "java.naming", "jdk.unsupported")
             packageName = "ImagePrepTool"
             packageVersion = "0.1.0"
-            description = "画像の処理を行い、公開する形に整える"
+            description = "画像を公開用に整える（リサイズ・形式変換・撮影情報の書き込み）"
             vendor = "ImagePrepTool"
 
             windows {
