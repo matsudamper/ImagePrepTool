@@ -83,7 +83,7 @@ object ImageEncoder {
     private fun writeAtomically(file: File, block: (File) -> Unit) {
         // 既存ファイルや同時に動く書き出しとぶつからないよう、処理ごとに一意な名前にする。
         // createTempFile は 0600 で作られ移動後も残るため、通常の権限（umask 依存）で新規作成する
-        val temp = generateSequence { File(file.absoluteFile.parentFile, ".${file.name}.${UUID.randomUUID()}.tmp") }
+        val temp = generateSequence { File(file.absoluteFile.parentFile, ".imageprep-${UUID.randomUUID()}.tmp") }
             .first { it.createNewFile() }
             .apply { deleteOnExit() }
         try {

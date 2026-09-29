@@ -206,6 +206,15 @@ class ImageProcessingTest {
     }
 
     @Test
+    fun exportsFileWithLongName() {
+        // 一時ファイル名に出力名を含めると、名前長の上限（多くの環境で 255 バイト）を超える
+        val src = writeImage("${"a".repeat(230)}.png")
+        val item = OutputPlanner.plan(listOf(src), File(dir, "out"), EditOptions(outputFormat = OutputFormat.Png)).single()
+        val result = ImageProcessor(ExternalTools.None).export(item, EditOptions(outputFormat = OutputFormat.Png))
+        assertEquals(ProcessResult.Status.Success, result.status, result.message)
+    }
+
+    @Test
     fun renderDoesNotMutateSource() {
         val src = BufferedImage(100, 100, BufferedImage.TYPE_INT_RGB)
         val out = ImageProcessor(ExternalTools.None).render(src, "abc", EditOptions(), ImageSize(100, 100))
