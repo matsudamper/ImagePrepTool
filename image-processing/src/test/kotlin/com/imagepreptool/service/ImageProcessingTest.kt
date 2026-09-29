@@ -115,6 +115,17 @@ class ImageProcessingTest {
     }
 
     @Test
+    fun planProtectsOriginalsThatAreNotExported() {
+        val png = writeImage("a.png")
+        val jpg = writeImage("a.jpg")
+        // a.jpg は書き出さないが読み込まれている元画像なので、上書きを選んでも守る
+        val plan = OutputPlanner.plan(listOf(png), dir, EditOptions(outputFormat = OutputFormat.Jpeg), protectedFiles = listOf(png, jpg))
+        val resolved = OutputPlanner.applyPolicy(plan, ConflictPolicy.Overwrite).single()
+        assertNotEquals(jpg.absoluteFile, resolved.target)
+        assertEquals("a (2).jpg", resolved.target.name)
+    }
+
+    @Test
     fun conflictPolicies() {
         val src = writeImage("a.png")
         val out = File(dir, "out").apply { mkdirs() }

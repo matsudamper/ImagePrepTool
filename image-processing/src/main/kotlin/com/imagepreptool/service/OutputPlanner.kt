@@ -35,9 +35,16 @@ object OutputPlanner {
         return "${source.nameWithoutExtension}${sanitize(suffix)}.$ext"
     }
 
-    /** 出力ファイルを決める。バッチ内で名前が重なる場合と、元画像を上書きしそうな場合は常に別名にする */
-    fun plan(sources: List<File>, outputDir: File, options: EditOptions): List<PlannedOutput> {
-        val sourcePaths = sources.map { it.absoluteFile.normalize() }.toSet()
+    /**
+     * 出力ファイルを決める。バッチ内で名前が重なる場合と、[protectedFiles]（元画像）を上書きしそうな場合は常に別名にする。
+     */
+    fun plan(
+        sources: List<File>,
+        outputDir: File,
+        options: EditOptions,
+        protectedFiles: Collection<File> = sources,
+    ): List<PlannedOutput> {
+        val sourcePaths = (sources + protectedFiles).map { it.absoluteFile.normalize() }.toSet()
         val used = mutableSetOf<String>()
         return sources.map { source ->
             val format = resolveFormat(source, options.outputFormat)

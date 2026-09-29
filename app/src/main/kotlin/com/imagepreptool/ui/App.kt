@@ -150,7 +150,7 @@ fun App(viewModel: ImagePrepViewModel) {
     }
 
     when (val export = uiState.export) {
-        ExportState.Idle -> Unit
+        ExportState.Idle, ExportState.Preparing -> Unit
         is ExportState.ConfirmConflicts -> ConflictDialog(export, viewModel::resolveConflicts)
         is ExportState.Running -> ProgressDialog(export, viewModel::cancelExport)
         is ExportState.Finished -> ResultDialog(

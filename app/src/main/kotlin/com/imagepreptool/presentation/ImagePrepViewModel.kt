@@ -315,9 +315,25 @@ class ImagePrepViewModel(
         val ui = state.toUiState()
         if (!ui.canExport) return
         val outputDir = ui.outputDirectory ?: return
+        // 計画中に再度呼ばれても二重に書き出さないよう、先に状態を確保する
+        mutate { it.copy(export = ExportState.Preparing) }
         viewModelScope.launch {
-            val plan = withContext(Dispatchers.IO) {
-                OutputPlanner.plan(state.images.filter { it.included }.map { it.file }, outputDir, state.options)
+            val plan = try {
+                withContext(Dispatchers.IO) {
+                    OutputPlanner.plan(
+                        sources = state.images.filter { it.included }.map { it.file },
+                        outputDir = outputDir,
+                        options = state.options,
+                        // 書き出しから外した画像も元画像なので上書きしない
+                        protectedFiles = state.images.map { it.file },
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                mutate { it.copy(export = ExportState.Idle) }
+                messageChannel.send("書き出しを開始できません（${e.message ?: e.javaClass.simpleName}）")
+                return@launch
             }
             if (plan.any { it.exists }) {
                 mutate { it.copy(export = ExportState.ConfirmConflicts(plan)) }
@@ -526,6 +542,12 @@ internal fun ImagePrepViewModelState.toUiState(): ImagePrepUiState {
     val outputDir = customOutputDir ?: defaultOutputDir
     val notices = buildList {
         val tools = tools
+        val needsTools = included.any {
+            ImageLoader.isHeif(it.file) || OutputPlanner.resolveFormat(it.file, options.outputFormat) == OutputFormat.Webp
+        }
+        if (tools == null && needsTools) {
+            add(Notice("外部ツールを確認しています…", blocking = true))
+        }
         if (tools != null) {
             val needsWebp = included.any { OutputPlanner.resolveFormat(it.file, options.outputFormat) == OutputFormat.Webp }
             if (needsWebp && !tools.canWriteWebp) {

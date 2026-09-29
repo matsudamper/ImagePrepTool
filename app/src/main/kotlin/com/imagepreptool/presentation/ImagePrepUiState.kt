@@ -33,6 +33,9 @@ data class PreviewState(
 sealed interface ExportState {
     data object Idle : ExportState
 
+    /** 出力ファイルを決めている間 */
+    data object Preparing : ExportState
+
     data class ConfirmConflicts(val plan: List<PlannedOutput>) : ExportState {
         val conflictCount: Int get() = plan.count { it.exists }
     }

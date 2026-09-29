@@ -32,6 +32,26 @@ class UiStateTest {
     }
 
     @Test
+    fun toolDependentExportWaitsForToolCheck() {
+        val heic = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.heic"))), tools = null).toUiState()
+        assertFalse(heic.canExport)
+        val jpeg = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), tools = null).toUiState()
+        assertTrue(jpeg.canExport)
+    }
+
+    @Test
+    fun exportIsReservedBeforePlanning() {
+        val vm = ImagePrepViewModel(
+            settings = com.imagepreptool.data.InMemorySettingsStore(),
+            checkTools = { ExternalTools.None },
+        )
+        vm.addFilesForTest(listOf(File("/photos/a.jpg")))
+        vm.requestExport()
+        assertEquals(ExportState.Preparing, vm.snapshotForTest().export)
+        assertFalse(vm.snapshotForTest().canExport)
+    }
+
+    @Test
     fun heicWithoutDecoderCanBeExcluded() {
         val state = ImagePrepViewModelState(
             images = listOf(ImageItem(File("/photos/a.jpg")), ImageItem(File("/photos/b.heic"))),
