@@ -102,6 +102,9 @@ class ImagePrepViewModel(
 
     private var exportJob: Job? = null
     private var loadJob: Job? = null
+
+    /** 読み込みを始めるたびに増やす。取り消された古い読み込みが新しい読み込み中表示を消さないようにする */
+    private var loadGeneration = 0
     private var pendingExportSettings: Pair<EditOptions, ExternalTools?>? = null
     private val previewCache = Collections.synchronizedMap(
         object : LinkedHashMap<String, PreviewSource>(8, 0.75f, true) {
@@ -127,12 +130,13 @@ class ImagePrepViewModel(
         if (rejectWhileExporting()) return
         // 後から開いたフォルダを優先し、前の読み込み結果で上書きしない
         loadJob?.cancel()
+        val generation = ++loadGeneration
         loadJob = viewModelScope.launch {
             mutate { it.copy(isLoading = true) }
             val files = try {
                 runInterruptible(Dispatchers.IO) { listImages(dir) }
             } finally {
-                mutate { it.copy(isLoading = false) }
+                finishLoading(generation)
             }
             if (files.isEmpty()) {
                 messageChannel.send("「${dir.name}」に読み込める画像がありません")
@@ -159,6 +163,7 @@ class ImagePrepViewModel(
             return
         }
         loadJob?.cancel()
+        val generation = ++loadGeneration
         loadJob = viewModelScope.launch {
             mutate { it.copy(isLoading = true) }
             val expanded = try {
@@ -166,7 +171,7 @@ class ImagePrepViewModel(
                     files.flatMap { if (it.isDirectory) listImages(it) else listOf(it) }
                 }
             } finally {
-                mutate { it.copy(isLoading = false) }
+                finishLoading(generation)
             }
             val supported = expanded.filter { it.isFile && ImageLoader.isSupported(it) }
             val ignored = expanded.size - supported.size
@@ -186,6 +191,10 @@ class ImagePrepViewModel(
             }.ifEmpty { listOf("追加できる画像がありません") }
             messageChannel.send(message.joinToString("・"))
         }
+    }
+
+    private fun finishLoading(generation: Int) {
+        if (generation == loadGeneration) mutate { it.copy(isLoading = false) }
     }
 
     /** 書き出しの準備中・実行中は一覧を差し替えない（表示と書き出し対象がずれるのを防ぐ） */
