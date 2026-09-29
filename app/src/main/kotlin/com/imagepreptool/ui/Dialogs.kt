@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -27,6 +29,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -255,8 +259,8 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
             Text("確認中…", style = MaterialTheme.typography.bodyMedium)
             return@AppDialog
         }
-        Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.small) {
-            Column {
+        Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(max = 420.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 tools.statuses.forEachIndexed { index, status ->
                     if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Top) {
@@ -278,9 +282,14 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
                                 if (status.available) status.detail else "${status.detail} · ${installHint(status.tool)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
+                                maxLines = 3,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            val command = installCommand(status.tool)
+                            if (!status.available && command != null) {
+                                Spacer(Modifier.height(6.dp))
+                                CopyableCommand(command)
+                            }
                         }
                     }
                 }
@@ -288,7 +297,7 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            "HEIC は heif-dec / heif-convert / magick のいずれか 1 つがあれば読み込めます。インストール後は「再確認」を押してください。",
+            "HEIC は heif-dec / heif-convert / magick のいずれか 1 つがあれば読み込めます。インストール後は PATH がアプリに反映されないため、アプリを再起動してください。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -297,6 +306,22 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
 
 private fun installHint(tool: ExternalTool): String = when (tool) {
     ExternalTool.Cwebp -> "libwebp に含まれます"
-    ExternalTool.HeifDec, ExternalTool.HeifConvert -> "libheif に含まれます"
-    ExternalTool.Magick -> "ImageMagick に含まれます"
+    ExternalTool.HeifDec, ExternalTool.HeifConvert -> "libheif に含まれます。下のコマンドで magick（ImageMagick）を入れれば代替できます"
+    ExternalTool.Magick -> "ImageMagick に含まれます（HEIC 対応版）"
+}
+
+private fun installCommand(tool: ExternalTool): String? = when (tool) {
+    ExternalTool.Cwebp -> "winget install -e --id Google.Libwebp"
+    ExternalTool.HeifDec, ExternalTool.HeifConvert, ExternalTool.Magick -> "winget install ImageMagick.ImageMagick"
+}
+
+@Composable
+private fun CopyableCommand(command: String) {
+    val clipboard = LocalClipboardManager.current
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.extraSmall) {
+        Row(Modifier.padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(command, style = MaterialTheme.typography.bodySmall.merge(MonoNumberStyle), modifier = Modifier.weight(1f))
+            TextButton(onClick = { clipboard.setText(AnnotatedString(command)) }) { Text("コピー") }
+        }
+    }
 }
