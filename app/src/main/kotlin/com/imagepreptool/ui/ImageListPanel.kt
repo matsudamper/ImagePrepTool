@@ -74,6 +74,7 @@ fun ImageListPanel(
     images: List<ImageItem>,
     focusedFile: File?,
     selectedFiles: Set<File>,
+    isSelectionMode: Boolean,
     tools: ExternalTools?,
     onClickImage: (File, SelectMode) -> Unit,
     onRemoveSelection: () -> Unit,
@@ -101,8 +102,7 @@ fun ImageListPanel(
     }
 
     Column(modifier = modifier.fillMaxHeight().background(colors.surface)) {
-        val multiSelected = selectedFiles.size > 1
-        if (multiSelected) {
+        if (isSelectionMode) {
             SelectionBar(
                 count = selectedFiles.size,
                 onRemove = onRemoveSelection,
@@ -151,7 +151,7 @@ fun ImageListPanel(
         ) {
             items(images, key = { it.file.absolutePath }) { item ->
                 // 複数選択中の画像に対する操作は選択中の全画像に反映される
-                val inGroup = multiSelected && item.file in selectedFiles
+                val inGroup = isSelectionMode && item.file in selectedFiles
                 val prefix = if (inGroup) "選択中の ${selectedFiles.size} 枚を" else ""
                 ContextMenuArea(
                     items = {

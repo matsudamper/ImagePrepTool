@@ -140,6 +140,31 @@ class UiStateTest {
     }
 
     @Test
+    fun selectionExportSurvivesRemovalDownToOneImage() {
+        val files = listOf("a.jpg", "b.heic", "c.jpg").map { File("/photos/$it") }
+        val vm = ImagePrepViewModel(
+            settings = com.imagepreptool.data.InMemorySettingsStore(),
+            checkTools = { ExternalTools.None },
+        )
+        vm.addFilesForTest(files)
+        vm.setToolsForTest(ExternalTools.None)
+        vm.snapshotForTest().listener.clickImage(files[0], SelectMode.Single)
+        vm.snapshotForTest().listener.clickImage(files[1], SelectMode.Toggle)
+        vm.snapshotForTest().listener.removeUnreadable()
+        var state = vm.snapshotForTest()
+        // 選択が 1 枚に減っても、選択外の画像を書き出し対象にしない
+        assertTrue(state.isExportingSelection)
+        assertEquals(1, state.exportCount)
+
+        vm.snapshotForTest().listener.undoRemoval()
+        state = vm.snapshotForTest()
+        assertEquals(files, state.images.map { it.file })
+        assertEquals(setOf(files[0], files[1]), state.selectedFiles)
+        assertEquals(files[0], state.focusedFile)
+        assertTrue(state.isExportingSelection)
+    }
+
+    @Test
     fun undoRestoresRemovedImagesAtOriginalPositions() {
         val files = (1..5).map { File("/photos/$it.jpg") }
         val vm = ImagePrepViewModel(
@@ -155,6 +180,8 @@ class UiStateTest {
         vm.snapshotForTest().listener.undoRemoval()
         val state = vm.snapshotForTest()
         assertEquals(files, state.images.map { it.file })
+        // 削除前の選択に戻る
         assertEquals(setOf(files[1], files[3]), state.selectedFiles)
+        assertEquals(files[1], state.focusedFile)
     }
 }

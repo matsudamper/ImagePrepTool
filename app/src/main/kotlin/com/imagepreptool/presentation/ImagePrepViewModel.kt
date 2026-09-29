@@ -146,6 +146,7 @@ class ImagePrepViewModel(
                     focusedFile = files.first(),
                     selection = setOf(files.first()),
                     anchor = files.first(),
+                    isSelectionMode = false,
                     lastRemoval = null,
                     removedFiles = emptySet(),
                 )
@@ -226,6 +227,7 @@ class ImagePrepViewModel(
                 focusedFile = null,
                 selection = emptySet(),
                 anchor = null,
+                isSelectionMode = false,
                 export = ExportState.Idle,
                 lastRemoval = null,
                 removedFiles = emptySet(),
@@ -269,8 +271,16 @@ class ImagePrepViewModel(
                 focusedFile = focused,
                 selection = remainingSelection.ifEmpty { setOfNotNull(focused) },
                 anchor = state.anchor?.takeIf { it !in targets } ?: focused,
+                isSelectionMode = state.isSelectionMode && remainingSelection.isNotEmpty(),
                 sourceFolder = if (images.isEmpty()) null else state.sourceFolder,
-                lastRemoval = ImagePrepViewModelState.Removal(removed, state.sourceFolder),
+                lastRemoval = ImagePrepViewModelState.Removal(
+                    entries = removed,
+                    focusedFile = state.focusedFile,
+                    selection = state.selection,
+                    anchor = state.anchor,
+                    isSelectionMode = state.isSelectionMode,
+                    sourceFolder = state.sourceFolder,
+                ),
                 removedFiles = state.removedFiles + removed.map { it.value.file },
             )
         }
@@ -280,7 +290,7 @@ class ImagePrepViewModel(
         }
     }
 
-    /** 直前の削除を取り消し、元の位置に戻す */
+    /** 直前の削除を取り消し、画像を元の位置に、選択とプレビューを削除前の状態に戻す */
     private fun undoRemoval() {
         mutate { state ->
             val removal = state.lastRemoval ?: return@mutate state
@@ -290,12 +300,17 @@ class ImagePrepViewModel(
             val images = state.images.toMutableList()
             restoring.forEach { (index, item) -> images.add(index.coerceAtMost(images.size), item) }
             val restoredFiles = restoring.map { it.value.file }
+            val presentAfterRestore = present + restoredFiles
+            val before = removal
+            val focused = before.focusedFile?.takeIf { it in presentAfterRestore } ?: restoredFiles.first()
+            val selection = before.selection.filter { it in presentAfterRestore }.toSet()
             state.copy(
                 images = images,
-                focusedFile = restoredFiles.first(),
-                selection = restoredFiles.toSet(),
-                anchor = restoredFiles.first(),
-                sourceFolder = if (state.images.isEmpty()) removal.sourceFolder else state.sourceFolder,
+                focusedFile = focused,
+                selection = selection.ifEmpty { setOf(focused) },
+                anchor = before.anchor?.takeIf { it in presentAfterRestore } ?: focused,
+                isSelectionMode = before.isSelectionMode && selection.isNotEmpty(),
+                sourceFolder = if (state.images.isEmpty()) before.sourceFolder else state.sourceFolder,
                 lastRemoval = null,
                 removedFiles = state.removedFiles - restoredFiles.toSet(),
             )
@@ -329,32 +344,34 @@ class ImagePrepViewModel(
     private fun clickImage(file: File, mode: SelectMode) {
         mutate { state ->
             when (mode) {
-                SelectMode.Single -> state.copy(focusedFile = file, selection = setOf(file), anchor = file)
+                SelectMode.Single -> state.copy(focusedFile = file, selection = setOf(file), anchor = file, isSelectionMode = false)
                 SelectMode.Toggle -> {
                     val base = state.effectiveSelection
+                    val selection = if (file in base) base - file else base + file
                     state.copy(
-                        selection = if (file in base) base - file else base + file,
+                        selection = selection,
                         anchor = file,
+                        isSelectionMode = selection.size > 1 || (state.isSelectionMode && selection.isNotEmpty()),
                         focusedFile = state.focusedFile ?: file,
                     )
                 }
                 SelectMode.Range -> {
                     val from = state.images.indexOfFirst { it.file == (state.anchor ?: state.focusedFile) }
                     val to = state.images.indexOfFirst { it.file == file }
-                    if (from < 0 || to < 0) return@mutate state.copy(focusedFile = file, selection = setOf(file), anchor = file)
+                    if (from < 0 || to < 0) return@mutate state.copy(focusedFile = file, selection = setOf(file), anchor = file, isSelectionMode = false)
                     val range = state.images.subList(minOf(from, to), maxOf(from, to) + 1).map { it.file }
-                    state.copy(selection = range.toSet(), focusedFile = state.focusedFile ?: file)
+                    state.copy(selection = range.toSet(), focusedFile = state.focusedFile ?: file, isSelectionMode = range.size > 1)
                 }
             }
         }
     }
 
     private fun selectAll() {
-        mutate { state -> state.copy(selection = state.images.map { it.file }.toSet()) }
+        mutate { state -> state.copy(selection = state.images.map { it.file }.toSet(), isSelectionMode = state.images.size > 1) }
     }
 
     private fun clearSelection() {
-        mutate { state -> state.copy(selection = setOfNotNull(state.focusedFile), anchor = state.focusedFile) }
+        mutate { state -> state.copy(selection = setOfNotNull(state.focusedFile), anchor = state.focusedFile, isSelectionMode = false) }
     }
 
     private fun moveFocus(delta: Int) {
@@ -362,7 +379,7 @@ class ImagePrepViewModel(
             if (state.images.isEmpty()) return@mutate state
             val current = state.images.indexOfFirst { it.file == state.focusedFile }.coerceAtLeast(0)
             val next = state.images[(current + delta).coerceIn(0, state.images.lastIndex)].file
-            state.copy(focusedFile = next, selection = setOf(next), anchor = next)
+            state.copy(focusedFile = next, selection = setOf(next), anchor = next, isSelectionMode = false)
         }
     }
 
@@ -633,6 +650,11 @@ internal data class ImagePrepViewModelState(
     /** 一覧で選択中の画像（Shift / Ctrl で複数）。プレビューは [focusedFile] */
     val selection: Set<File> = emptySet(),
     val anchor: File? = null,
+    /**
+     * 選択中の画像だけを書き出すかどうか。Ctrl / Shift で複数選択すると有効になる。
+     * 削除で選択が 1 枚に減っても、書き出し対象が一覧全体に広がらないよう枚数とは独立して持つ
+     */
+    val isSelectionMode: Boolean = false,
     val options: EditOptions = EditOptions(),
     val customOutputDir: File? = null,
     val tools: ExternalTools? = null,
@@ -650,14 +672,16 @@ internal data class ImagePrepViewModelState(
     class Removal(
         /** 削除した画像と、削除前の一覧での位置（昇順） */
         val entries: List<IndexedValue<ImageItem>>,
+        /** ここから下は削除前の選択とプレビューの状態 */
+        val focusedFile: File?,
+        val selection: Set<File>,
+        val anchor: File?,
+        val isSelectionMode: Boolean,
         val sourceFolder: File?,
     )
 
-    val isExportingSelection: Boolean
-        get() = selection.size > 1
-
     val exportTargets: List<ImageItem>
-        get() = if (isExportingSelection) images.filter { it.file in selection } else images
+        get() = if (isSelectionMode) images.filter { it.file in selection } else images
 
     val defaultOutputDir: File?
         get() = (sourceFolder ?: images.firstOrNull()?.file?.absoluteFile?.parentFile)?.let { File(it, "output") }
@@ -705,7 +729,7 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
     return ImagePrepUiState(
         images = images,
         exportCount = targets.size,
-        isExportingSelection = isExportingSelection,
+        isExportingSelection = isSelectionMode,
         focusedFile = focusedFile,
         selectedFiles = effectiveSelection,
         sourceTitle = folder?.name?.ifEmpty { folder.path } ?: if (images.isEmpty()) null else "追加した画像",

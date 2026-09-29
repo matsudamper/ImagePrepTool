@@ -226,6 +226,7 @@ private fun Workspace(
                 images = uiState.images,
                 focusedFile = uiState.focusedFile,
                 selectedFiles = uiState.selectedFiles,
+                isSelectionMode = uiState.isExportingSelection,
                 tools = uiState.tools,
                 onClickImage = uiState.listener::clickImage,
                 onRemoveSelection = uiState.listener::removeSelection,
