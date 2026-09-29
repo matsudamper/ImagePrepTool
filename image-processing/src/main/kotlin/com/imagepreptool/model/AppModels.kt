@@ -50,7 +50,7 @@ enum class CaptionPosition(val label: String) {
 
 enum class CaptionStyle(val label: String) {
     Plate("背景付き"),
-    Shadow("影付き"),
+    Plain("影なし"),
 }
 
 enum class ConflictPolicy(val label: String) {
