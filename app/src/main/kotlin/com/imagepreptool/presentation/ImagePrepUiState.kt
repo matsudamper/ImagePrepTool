@@ -25,6 +25,8 @@ data class PreviewState(
     val originalSize: ImageSize?,
     val outputSize: ImageSize?,
     val outputFormat: OutputFormat?,
+    /** 書き出し後のおおよそのファイルサイズ。キャプションを含まず、プレビュー用に縮小して読んだ場合は出さない */
+    val outputByteSize: Long?,
     /** この画像の撮影情報（テンプレートの項目ごと） */
     val captionFields: Map<CaptionField, String>,
     val loading: Boolean,

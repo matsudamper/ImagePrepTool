@@ -62,6 +62,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.io.File
+import java.util.Locale
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import com.imagepreptool.model.EditOptions
@@ -219,6 +220,9 @@ private fun PreviewPaneContent(
             preview.outputFormat?.let { format ->
                 Pill(if (format.lossy) "${format.label} · 品質 ${options.quality}" else format.label)
             }
+            preview.outputByteSize?.let { byteSize ->
+                Pill("約 ${formatByteSize(byteSize)}")
+            }
         }
     }
 }
@@ -327,6 +331,12 @@ private fun ZoomResetButton(zoom: PreviewZoomState, modifier: Modifier = Modifie
     }
 }
 
+private fun formatByteSize(byteSize: Long): String = when {
+    byteSize < 1024 -> "$byteSize B"
+    byteSize < 1024 * 1024 -> "${(byteSize + 512) / 1024} KB"
+    else -> String.format(Locale.ROOT, "%.1f MB", byteSize / (1024.0 * 1024.0))
+}
+
 @Composable
 private fun LoadingBadge(visible: Boolean, modifier: Modifier = Modifier) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
@@ -386,6 +396,7 @@ private fun PreviewPaneForPreview(zoom: PreviewZoomState) {
                     originalSize = ImageSize(original.width, original.height),
                     outputSize = ImageSize(processed.width, processed.height),
                     outputFormat = OutputFormat.Jpeg,
+                    outputByteSize = 1_234,
                     captionFields = mapOf(),
                     loading = false,
                     error = null,
