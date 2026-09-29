@@ -184,4 +184,31 @@ class UiStateTest {
         assertEquals(setOf(files[1], files[3]), state.selectedFiles)
         assertEquals(files[1], state.focusedFile)
     }
+
+    @Test
+    fun imagesFromMultipleFoldersAreGroupedAndExportedTogether() {
+        val state = ImagePrepViewModelState(
+            images = listOf("/trip/1.jpg", "/trip/2.jpg", "/misc/1.jpg").map { ImageItem(File(it)) },
+        ).toUiState(listener)
+        assertEquals(listOf(File("/trip"), File("/misc")), state.imageGroups.map { it.folder })
+        assertEquals(listOf(2, 1), state.imageGroups.map { it.images.size })
+        // 既定の出力先は先頭フォルダの output で、複数フォルダをまとめて書き出すことを知らせる
+        assertEquals(File("/trip/output"), state.outputDirectory)
+        assertTrue(state.notices.any { !it.blocking && it.text.contains("2 つのフォルダ") })
+        assertTrue(state.canExport)
+    }
+
+    @Test
+    fun undoingFolderRemovalRestoresFolderGroup() {
+        val files = listOf("/trip/1.jpg", "/trip/2.jpg", "/misc/1.jpg").map(::File)
+        val vm = ImagePrepViewModel(
+            settings = com.imagepreptool.data.InMemorySettingsStore(),
+            checkTools = { ExternalTools.None },
+        )
+        vm.addFilesForTest(files)
+        vm.snapshotForTest().listener.removeFolder(File("/trip"))
+        assertEquals(listOf(files[2]), vm.snapshotForTest().images.map { it.file })
+        vm.snapshotForTest().listener.undoRemoval()
+        assertEquals(files, vm.snapshotForTest().images.map { it.file })
+    }
 }

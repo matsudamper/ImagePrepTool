@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -55,15 +57,18 @@ import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import java.io.File
 import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.presentation.ImageGroup
 import com.imagepreptool.presentation.ImageItem
 import com.imagepreptool.presentation.SelectMode
 import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_broken_image
 import com.imagepreptool.resources.ic_close
+import com.imagepreptool.resources.ic_folder
 import com.imagepreptool.ui.components.Tooltip
 import com.imagepreptool.ui.theme.MonoNumberStyle
 import org.jetbrains.compose.resources.painterResource
@@ -71,7 +76,7 @@ import org.jetbrains.compose.resources.painterResource
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ImageListPanel(
-    images: List<ImageItem>,
+    imageGroups: List<ImageGroup>,
     focusedFile: File?,
     selectedFiles: Set<File>,
     isSelectionMode: Boolean,
@@ -84,21 +89,28 @@ fun ImageListPanel(
     onMoveFocus: (Int) -> Unit,
     onRemove: (File) -> Unit,
     onReveal: (File) -> Unit,
+    onOpenFolder: (File) -> Unit,
+    onRemoveFolder: (File) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
     val gridState = rememberLazyGridState()
     val focusRequester = remember { FocusRequester() }
+    val imageCount = imageGroups.sumOf { it.images.size }
+    val folderHeaderHeightPx = with(LocalDensity.current) { FolderHeaderHeight.roundToPx() }
 
     LaunchedEffect(focusedFile) {
-        val index = images.indexOfFirst { it.file == focusedFile }
-        if (index < 0) return@LaunchedEffect
+        val index = focusedFile?.let { gridIndexOf(imageGroups, it) } ?: return@LaunchedEffect
         val visible = gridState.layoutInfo.visibleItemsInfo
+        // 上端に固定された見出しの下に隠れている画像は見えていない扱いにする
         val fullyVisible = visible.any { it.index == index } &&
             visible.first { it.index == index }.let { item ->
-                item.offset.y >= 0 && item.offset.y + item.size.height <= gridState.layoutInfo.viewportEndOffset
+                item.offset.y >= folderHeaderHeightPx && item.offset.y + item.size.height <= gridState.layoutInfo.viewportEndOffset
             }
-        if (!fullyVisible) gridState.animateScrollToItem(index)
+        if (!fullyVisible) {
+            gridState.animateScrollToItem(index)
+            gridState.animateScrollBy(-folderHeaderHeightPx.toFloat())
+        }
     }
 
     Column(modifier = modifier.fillMaxHeight().background(colors.surface)) {
@@ -115,7 +127,7 @@ fun ImageListPanel(
             ) {
                 Text("画像", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Text(
-                    "${images.size} 枚",
+                    "$imageCount 枚",
                     style = MaterialTheme.typography.labelMedium.merge(MonoNumberStyle),
                     color = colors.onSurfaceVariant,
                 )
@@ -149,30 +161,95 @@ fun ImageListPanel(
                 }
                 .focusable(),
         ) {
-            items(images, key = { it.file.absolutePath }) { item ->
-                // 複数選択中の画像に対する操作は選択中の全画像に反映される
-                val inGroup = isSelectionMode && item.file in selectedFiles
-                val prefix = if (inGroup) "選択中の ${selectedFiles.size} 枚を" else ""
-                ContextMenuArea(
-                    items = {
-                        listOf(
-                            ContextMenuItem("エクスプローラーで表示") { onReveal(item.file) },
-                            ContextMenuItem(prefix + "一覧から削除") { onRemove(item.file) },
-                        )
-                    },
-                ) {
-                    Thumbnail(
-                        item = item,
-                        focused = item.file == focusedFile,
-                        selected = inGroup,
-                        tools = tools,
-                        onClick = { mode ->
-                            focusRequester.requestFocus()
-                            onClickImage(item.file, mode)
+            imageGroups.forEach { group ->
+                stickyHeader(key = "folder:${group.folder.absolutePath}", contentType = "folder") {
+                    FolderHeader(
+                        group = group,
+                        onOpen = { onOpenFolder(group.folder) },
+                        onRemove = { onRemoveFolder(group.folder) },
+                    )
+                }
+                items(group.images, key = { it.file.absolutePath }, contentType = { "image" }) { item ->
+                    // 複数選択中の画像に対する操作は選択中の全画像に反映される
+                    val inGroup = isSelectionMode && item.file in selectedFiles
+                    val prefix = if (inGroup) "選択中の ${selectedFiles.size} 枚を" else ""
+                    ContextMenuArea(
+                        items = {
+                            listOf(
+                                ContextMenuItem("エクスプローラーで表示") { onReveal(item.file) },
+                                ContextMenuItem(prefix + "一覧から削除") { onRemove(item.file) },
+                            )
                         },
+                    ) {
+                        Thumbnail(
+                            item = item,
+                            focused = item.file == focusedFile,
+                            selected = inGroup,
+                            tools = tools,
+                            onClick = { mode ->
+                                focusRequester.requestFocus()
+                                onClickImage(item.file, mode)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 見出しを含めたグリッド上の位置。見出しはフォルダごとに 1 つ入る */
+private fun gridIndexOf(imageGroups: List<ImageGroup>, file: File): Int? =
+    imageGroups
+        .flatMap { group -> listOf(group.folder) + group.images.map { it.file } }
+        .indexOf(file)
+        .takeIf { it >= 0 }
+
+private val FolderHeaderHeight = 44.dp
+
+@Composable
+private fun FolderHeader(group: ImageGroup, onOpen: () -> Unit, onRemove: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    ContextMenuArea(
+        items = {
+            listOf(
+                ContextMenuItem("エクスプローラーで開く", onOpen),
+                ContextMenuItem("このフォルダの ${group.images.size} 枚を一覧から削除", onRemove),
+            )
+        },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(FolderHeaderHeight)
+                .background(colors.surface),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(painterResource(Res.drawable.ic_folder), null, tint = colors.primary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Tooltip(group.folder.path, modifier = Modifier.weight(1f)) {
+                Column {
+                    Text(
+                        group.folder.name.ifEmpty { group.folder.path },
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        group.folder.parent.orEmpty(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
+            Text(
+                "${group.images.size} 枚",
+                style = MaterialTheme.typography.labelMedium.merge(MonoNumberStyle),
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
     }
 }
