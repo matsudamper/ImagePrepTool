@@ -1,8 +1,5 @@
 package com.imagepreptool.service
 
-import com.imagepreptool.model.ExternalTool
-import com.imagepreptool.model.ExternalTools
-import com.imagepreptool.model.OutputFormat
 import java.awt.Color
 import java.awt.image.BufferedImage
 import java.io.File
@@ -11,6 +8,9 @@ import java.nio.file.Files
 import javax.imageio.IIOImage
 import javax.imageio.ImageIO
 import javax.imageio.ImageWriteParam
+import com.imagepreptool.model.ExternalTool
+import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.model.OutputFormat
 
 object ImageEncoder {
 

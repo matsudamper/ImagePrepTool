@@ -37,13 +37,14 @@ object CaptionTemplate {
             when {
                 !hasField -> replaced.trimEnd()
                 !resolved -> null
-                else -> replaced
-                    .replace(repeatedSeparators) { m ->
-                        // 最初の区切りの前の空白と、最後の区切りの後ろの空白を残す
-                        m.groupValues[1].trimEnd() + m.value.takeLastWhile(Char::isWhitespace)
-                    }
-                    .replace(edgeSeparators, "")
-                    .trim()
+                else ->
+                    replaced
+                        .replace(repeatedSeparators) { m ->
+                            // 最初の区切りの前の空白と、最後の区切りの後ろの空白を残す
+                            m.groupValues[1].trimEnd() + m.value.takeLastWhile(Char::isWhitespace)
+                        }
+                        .replace(edgeSeparators, "")
+                        .trim()
             }
         }
         return lines.dropWhile { it.isBlank() }.dropLastWhile { it.isBlank() }.joinToString("\n")

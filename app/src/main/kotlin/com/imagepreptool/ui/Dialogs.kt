@@ -48,13 +48,14 @@ import com.imagepreptool.ui.theme.MonoNumberStyle
 
 @Composable
 private fun AppDialog(
+    title: String,
     onDismiss: () -> Unit,
+    buttons: @Composable RowScope.() -> Unit,
+    modifier: Modifier = Modifier,
     dismissible: Boolean = true,
     width: Int = 440,
     icon: ImageVector? = null,
     iconTint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary,
-    title: String,
-    buttons: @Composable RowScope.() -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(
@@ -66,7 +67,7 @@ private fun AppDialog(
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 2.dp,
             shadowElevation = 12.dp,
-            modifier = Modifier.width(width.dp),
+            modifier = modifier.width(width.dp),
         ) {
             Column(Modifier.padding(24.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -91,9 +92,10 @@ private fun AppDialog(
 }
 
 @Composable
-fun ConflictDialog(state: ExportState.ConfirmConflicts, onResolve: (ConflictPolicy?) -> Unit) {
+fun ConflictDialog(state: ExportState.ConfirmConflicts, onResolve: (ConflictPolicy?) -> Unit, modifier: Modifier = Modifier) {
     val conflicts = state.plan.filter { it.exists }
     AppDialog(
+        modifier = modifier,
         onDismiss = { onResolve(null) },
         icon = Icons.Rounded.WarningAmber,
         iconTint = AppTheme.extended.warning,
@@ -132,8 +134,9 @@ fun ConflictDialog(state: ExportState.ConfirmConflicts, onResolve: (ConflictPoli
 }
 
 @Composable
-fun ProgressDialog(state: ExportState.Running, onCancel: () -> Unit) {
+fun ProgressDialog(state: ExportState.Running, onCancel: () -> Unit, modifier: Modifier = Modifier) {
     AppDialog(
+        modifier = modifier,
         onDismiss = {},
         dismissible = false,
         title = if (state.cancelling) "キャンセルしています…" else "書き出し中…",
@@ -159,7 +162,7 @@ fun ProgressDialog(state: ExportState.Running, onCancel: () -> Unit) {
 }
 
 @Composable
-fun ResultDialog(state: ExportState.Finished, onOpenFolder: () -> Unit, onClose: () -> Unit) {
+fun ResultDialog(state: ExportState.Finished, onOpenFolder: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
     val failures = state.failures
     val ext = AppTheme.extended
     val (icon, tint, title) = when {
@@ -169,6 +172,7 @@ fun ResultDialog(state: ExportState.Finished, onOpenFolder: () -> Unit, onClose:
         else -> Triple(Icons.Rounded.WarningAmber, ext.warning, "一部の画像を書き出せませんでした")
     }
     AppDialog(
+        modifier = modifier,
         onDismiss = onClose,
         icon = icon,
         iconTint = tint,
@@ -229,8 +233,9 @@ private fun Stat(label: String, value: Int, color: androidx.compose.ui.graphics.
 }
 
 @Composable
-fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Unit) {
+fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
     AppDialog(
+        modifier = modifier,
         onDismiss = onClose,
         title = "外部ツール",
         width = 540,

@@ -1,14 +1,5 @@
 package com.imagepreptool.service
 
-import com.imagepreptool.model.CaptionField
-import com.imagepreptool.model.CaptionStyle
-import com.imagepreptool.model.ConflictPolicy
-import com.imagepreptool.model.EditOptions
-import com.imagepreptool.model.ExternalTools
-import com.imagepreptool.model.ImageSize
-import com.imagepreptool.model.OutputFormat
-import com.imagepreptool.model.ProcessResult
-import com.imagepreptool.model.ResizeMode
 import java.awt.image.BufferedImage
 import java.io.File
 import java.nio.file.Files
@@ -19,6 +10,15 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
+import com.imagepreptool.model.CaptionField
+import com.imagepreptool.model.CaptionStyle
+import com.imagepreptool.model.ConflictPolicy
+import com.imagepreptool.model.EditOptions
+import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.model.ImageSize
+import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.ProcessResult
+import com.imagepreptool.model.ResizeMode
 
 class ImageProcessingTest {
 

@@ -33,7 +33,7 @@ internal object ProcessRunner {
         }
         if (!finished) {
             process.destroyForcibly()
-            throw ExternalCommandException("${command.first()} が ${timeoutSeconds} 秒以内に終了しませんでした")
+            throw ExternalCommandException("${command.first()} が $timeoutSeconds 秒以内に終了しませんでした")
         }
         reader.join(2_000)
         return Result(process.exitValue(), output.toString())

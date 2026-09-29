@@ -3,23 +3,6 @@ package com.imagepreptool.presentation
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.imagepreptool.data.PreferencesSettingsStore
-import com.imagepreptool.data.SettingsStore
-import com.imagepreptool.model.CaptionField
-import com.imagepreptool.model.ConflictPolicy
-import com.imagepreptool.model.EditOptions
-import com.imagepreptool.model.ExternalTools
-import com.imagepreptool.model.OutputFormat
-import com.imagepreptool.model.ProcessResult
-import com.imagepreptool.service.CaptionTemplate
-import com.imagepreptool.service.ExifService
-import com.imagepreptool.service.ExternalToolChecker
-import com.imagepreptool.service.ImageLoader
-import com.imagepreptool.service.ImageProcessor
-import com.imagepreptool.service.LoadedImage
-import com.imagepreptool.service.OutputPlanner
-import com.imagepreptool.service.PlannedOutput
-import com.imagepreptool.service.Resizer
 import java.io.File
 import java.util.Collections
 import kotlinx.coroutines.CancellationException
@@ -46,11 +29,28 @@ import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import com.imagepreptool.data.PreferencesSettingsStore
+import com.imagepreptool.data.SettingsStore
+import com.imagepreptool.model.CaptionField
+import com.imagepreptool.model.ConflictPolicy
+import com.imagepreptool.model.EditOptions
+import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.ProcessResult
+import com.imagepreptool.service.CaptionTemplate
+import com.imagepreptool.service.ExifService
+import com.imagepreptool.service.ExternalToolChecker
+import com.imagepreptool.service.ImageLoader
+import com.imagepreptool.service.ImageProcessor
+import com.imagepreptool.service.LoadedImage
+import com.imagepreptool.service.OutputPlanner
+import com.imagepreptool.service.PlannedOutput
+import com.imagepreptool.service.Resizer
 
 class ImagePrepViewModel(
     private val settings: SettingsStore = PreferencesSettingsStore(),
     private val checkTools: () -> ExternalTools = ExternalToolChecker::checkAll,
-) : ViewModel() {
+) : ViewModel(), WorkspaceEvents {
 
     private val viewModelStateFlow = MutableStateFlow(
         ImagePrepViewModelState(
@@ -141,7 +141,7 @@ class ImagePrepViewModel(
             val message = buildList {
                 if (added.isNotEmpty()) add("${added.size} 枚を追加しました")
                 if (supported.size > added.size) add("${supported.size - added.size} 枚は追加済みです")
-                if (ignored > 0) add("非対応の ${ignored} 件を除外しました")
+                if (ignored > 0) add("非対応の $ignored 件を除外しました")
             }.ifEmpty { listOf("追加できる画像がありません") }
             messageChannel.send(message.joinToString("・"))
         }
@@ -153,13 +153,13 @@ class ImagePrepViewModel(
         mutate { it.copy(images = files.map(::ImageItem), focusedFile = files.firstOrNull()) }
     }
 
-    fun closeAll() {
+    override fun closeAll() {
         if (exportJob?.isActive == true) return
         mutate { it.copy(images = emptyList(), sourceFolder = null, focusedFile = null, selection = emptySet(), anchor = null, export = ExportState.Idle) }
     }
 
     /** [file] が複数選択に含まれていれば選択中の全画像を一覧から外す */
-    fun removeImage(file: File) {
+    override fun removeImage(file: File) {
         mutate { state ->
             val targets = state.targetsFor(file)
             val index = state.images.indexOfFirst { it.file == file }
@@ -210,7 +210,7 @@ class ImagePrepViewModel(
      * 一覧でのクリック。Single はプレビューも切り替える。
      * Toggle（Ctrl）と Range（Shift）は選択だけを変え、プレビュー中の画像はそのまま。
      */
-    fun clickImage(file: File, mode: SelectMode) {
+    override fun clickImage(file: File, mode: SelectMode) {
         mutate { state ->
             when (mode) {
                 SelectMode.Single -> state.copy(focusedFile = file, selection = setOf(file), anchor = file)
@@ -233,15 +233,15 @@ class ImagePrepViewModel(
         }
     }
 
-    fun selectAll() {
+    override fun selectAll() {
         mutate { state -> state.copy(selection = state.images.map { it.file }.toSet()) }
     }
 
-    fun clearSelection() {
+    override fun clearSelection() {
         mutate { state -> state.copy(selection = setOfNotNull(state.focusedFile), anchor = state.focusedFile) }
     }
 
-    fun moveFocus(delta: Int) {
+    override fun moveFocus(delta: Int) {
         mutate { state ->
             if (state.images.isEmpty()) return@mutate state
             val current = state.images.indexOfFirst { it.file == state.focusedFile }.coerceAtLeast(0)
@@ -251,7 +251,7 @@ class ImagePrepViewModel(
     }
 
     /** [file] が複数選択に含まれていれば選択中の全画像を、そうでなければ [file] だけを切り替える */
-    fun toggleIncluded(file: File) {
+    override fun toggleIncluded(file: File) {
         mutate { state ->
             val targets = state.targetsFor(file)
             val included = !(state.images.firstOrNull { it.file == file }?.included ?: true)
@@ -259,22 +259,22 @@ class ImagePrepViewModel(
         }
     }
 
-    fun toggleFocusedIncluded() {
+    override fun toggleFocusedIncluded() {
         viewModelStateFlow.value.focusedFile?.let(::toggleIncluded)
     }
 
-    fun setSelectionIncluded(included: Boolean) {
+    override fun setSelectionIncluded(included: Boolean) {
         mutate { state ->
             val targets = state.effectiveSelection
             state.copy(images = state.images.map { if (it.file in targets) it.copy(included = included) else it })
         }
     }
 
-    fun setAllIncluded(included: Boolean) {
+    override fun setAllIncluded(included: Boolean) {
         mutate { state -> state.copy(images = state.images.map { it.copy(included = included) }) }
     }
 
-    fun excludeUnreadable() {
+    override fun excludeUnreadable() {
         mutate { state ->
             val tools = state.tools ?: return@mutate state
             state.copy(images = state.images.map { if (!state.canRead(it.file, tools)) it.copy(included = false) else it })
@@ -285,16 +285,16 @@ class ImagePrepViewModel(
 
     // region 設定
 
-    fun updateOptions(transform: (EditOptions) -> EditOptions) {
+    override fun updateOptions(transform: (EditOptions) -> EditOptions) {
         mutate { it.copy(options = transform(it.options)) }
     }
 
-    fun chooseOutputDirectory(dir: File) {
+    override fun chooseOutputDirectory(dir: File) {
         mutate { it.copy(customOutputDir = dir) }
         settings.saveCustomOutputDir(dir)
     }
 
-    fun resetOutputDirectory() {
+    override fun resetOutputDirectory() {
         mutate { it.copy(customOutputDir = null) }
         settings.saveCustomOutputDir(null)
     }
@@ -311,7 +311,7 @@ class ImagePrepViewModel(
 
     // region 書き出し
 
-    fun requestExport() {
+    override fun requestExport() {
         val state = viewModelStateFlow.value
         val ui = state.toUiState()
         if (!ui.canExport) return
@@ -557,10 +557,11 @@ internal fun ImagePrepViewModelState.toUiState(): ImagePrepUiState {
             }
             val unreadable = included.count { !canRead(it.file, tools) }
             if (unreadable > 0) {
-                add(Notice("HEIC の ${unreadable} 枚は heif-dec / magick が無いため読み込めません。", blocking = true, action = NoticeAction.ExcludeUnreadable))
+                add(Notice("HEIC の $unreadable 枚は heif-dec / magick が無いため読み込めません。", blocking = true, action = NoticeAction.ExcludeUnreadable))
             }
         }
-        if (outputDir != null && options.fileNameSuffix.isBlank() &&
+        if (outputDir != null &&
+            options.fileNameSuffix.isBlank() &&
             included.any { it.file.absoluteFile.parentFile?.normalize() == outputDir.absoluteFile.normalize() }
         ) {
             add(Notice("出力先が元画像と同じフォルダです。元画像は上書きされず「(2)」付きの名前で保存されます。接尾辞の設定がおすすめです。", blocking = false))

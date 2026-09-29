@@ -1,10 +1,10 @@
 package com.imagepreptool.service
 
+import java.io.File
+import java.nio.file.Path
 import com.imagepreptool.model.ConflictPolicy
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.OutputFormat
-import java.io.File
-import java.nio.file.Path
 
 data class PlannedOutput(
     val source: File,

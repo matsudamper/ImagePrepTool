@@ -1,13 +1,13 @@
 package com.imagepreptool.presentation
 
-import com.imagepreptool.model.EditOptions
-import com.imagepreptool.model.ExternalTools
-import com.imagepreptool.model.OutputFormat
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import com.imagepreptool.model.EditOptions
+import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.model.OutputFormat
 
 class UiStateTest {
 

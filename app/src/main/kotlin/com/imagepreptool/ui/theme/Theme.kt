@@ -9,9 +9,7 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -99,8 +97,6 @@ private val DarkExtended = ExtendedColors(
     onWarningContainer = Color(0xFFFFDDA6),
 )
 
-val LocalExtendedColors = staticCompositionLocalOf { LightExtended }
-
 private val AppTypography = Typography().let { base ->
     base.copy(
         titleLarge = base.titleLarge.copy(fontSize = 20.sp, fontWeight = FontWeight.SemiBold),
@@ -126,14 +122,13 @@ private val AppShapes = Shapes(
 @Composable
 fun AppTheme(darkTheme: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
     val colors: ColorScheme = if (darkTheme) DarkScheme else LightScheme
-    CompositionLocalProvider(LocalExtendedColors provides if (darkTheme) DarkExtended else LightExtended) {
-        MaterialTheme(colorScheme = colors, typography = AppTypography, shapes = AppShapes, content = content)
-    }
+    MaterialTheme(colorScheme = colors, typography = AppTypography, shapes = AppShapes, content = content)
 }
 
 object AppTheme {
+    /** 適用中のカラースキームに合わせた拡張色 */
     val extended: ExtendedColors
-        @Composable get() = LocalExtendedColors.current
+        @Composable get() = if (MaterialTheme.colorScheme.background == DarkScheme.background) DarkExtended else LightExtended
 }
 
 val MonoNumberStyle = TextStyle(fontFeatureSettings = "tnum")

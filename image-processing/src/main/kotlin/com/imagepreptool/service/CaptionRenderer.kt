@@ -1,8 +1,5 @@
 package com.imagepreptool.service
 
-import com.imagepreptool.model.CaptionPosition
-import com.imagepreptool.model.CaptionStyle
-import com.imagepreptool.model.EditOptions
 import java.awt.Color
 import java.awt.Font
 import java.awt.Graphics2D
@@ -12,6 +9,9 @@ import java.awt.image.BufferedImage
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import com.imagepreptool.model.CaptionPosition
+import com.imagepreptool.model.CaptionStyle
+import com.imagepreptool.model.EditOptions
 
 object CaptionRenderer {
 

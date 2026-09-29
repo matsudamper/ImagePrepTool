@@ -1,18 +1,8 @@
 package com.imagepreptool.ui
 
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.onClick
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.TextButton
-import androidx.compose.ui.input.key.isCtrlPressed
-import androidx.compose.ui.input.key.isMetaPressed
-import androidx.compose.ui.input.pointer.isCtrlPressed
-import androidx.compose.ui.input.pointer.isMetaPressed
-import androidx.compose.ui.input.pointer.isShiftPressed
-import com.imagepreptool.presentation.SelectMode
 import androidx.compose.foundation.ContextMenuArea
 import androidx.compose.foundation.ContextMenuItem
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,15 +28,19 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.onClick
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.BrokenImage
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TriStateCheckbox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -61,18 +55,24 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.state.ToggleableState
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.io.File
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.presentation.ImageItem
+import com.imagepreptool.presentation.SelectMode
 import com.imagepreptool.ui.components.Tooltip
 import com.imagepreptool.ui.theme.MonoNumberStyle
-import java.io.File
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -85,11 +85,11 @@ fun ImageListPanel(
     onClickImage: (File, SelectMode) -> Unit,
     onToggle: (File) -> Unit,
     onSetAll: (Boolean) -> Unit,
-    onSetSelectionIncluded: (Boolean) -> Unit,
+    onSetSelectionInclusion: (Boolean) -> Unit,
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onMoveFocus: (Int) -> Unit,
-    onToggleFocused: () -> Unit,
+    onToggleCurrentInclusion: () -> Unit,
     onRemove: (File) -> Unit,
     onReveal: (File) -> Unit,
     modifier: Modifier = Modifier,
@@ -114,8 +114,8 @@ fun ImageListPanel(
         if (multiSelected) {
             SelectionBar(
                 count = selectedFiles.size,
-                onInclude = { onSetSelectionIncluded(true) },
-                onExclude = { onSetSelectionIncluded(false) },
+                onInclude = { onSetSelectionInclusion(true) },
+                onExclude = { onSetSelectionInclusion(false) },
                 onClear = onClearSelection,
             )
         } else {
@@ -157,7 +157,7 @@ fun ImageListPanel(
                         Key.DirectionRight -> onMoveFocus(1)
                         Key.DirectionUp -> onMoveFocus(-columns)
                         Key.DirectionDown -> onMoveFocus(columns)
-                        Key.Spacebar -> onToggleFocused()
+                        Key.Spacebar -> onToggleCurrentInclusion()
                         Key.Delete -> focusedFile?.let(onRemove)
                         Key.Escape -> onClearSelection()
                         Key.A -> if (event.isCtrlPressed || event.isMetaPressed) onSelectAll() else return@onPreviewKeyEvent false

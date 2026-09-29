@@ -1,12 +1,12 @@
 package com.imagepreptool.ui
 
-import com.imagepreptool.service.ImageLoader
 import java.awt.Component
 import java.awt.Desktop
 import java.io.File
 import java.io.IOException
 import javax.swing.JFileChooser
 import javax.swing.filechooser.FileNameExtensionFilter
+import com.imagepreptool.service.ImageLoader
 
 object DesktopDialogs {
 

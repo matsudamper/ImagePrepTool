@@ -1,11 +1,11 @@
 package com.imagepreptool.service
 
+import java.awt.image.BufferedImage
+import java.io.File
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.ProcessResult
-import java.awt.image.BufferedImage
-import java.io.File
 
 class ImageProcessor(private val tools: ExternalTools) {
 
@@ -33,7 +33,7 @@ class ImageProcessor(private val tools: ExternalTools) {
             val target = Resizer.targetSize(loaded.size, options)
             val rendered = render(loaded.image, caption(item.source, options), options, target)
             ImageEncoder.write(rendered, item.format, options.quality, item.target, tools)
-            ProcessResult(item.source, item.target, ProcessResult.Status.Success, "${target} · ${item.format.label}")
+            ProcessResult(item.source, item.target, ProcessResult.Status.Success, "$target · ${item.format.label}")
         } catch (e: OutOfMemoryError) {
             ProcessResult(item.source, null, ProcessResult.Status.Failed, "メモリが不足しました")
         } catch (e: InterruptedException) {

@@ -65,7 +65,7 @@ fun PreviewPane(
     index: Int,
     total: Int,
     options: EditOptions,
-    onToggleIncluded: () -> Unit,
+    onToggleInclusion: () -> Unit,
     onMove: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -82,7 +82,7 @@ fun PreviewPane(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (item != null) {
-                    Checkbox(checked = item.included, onCheckedChange = { onToggleIncluded() })
+                    Checkbox(checked = item.included, onCheckedChange = { onToggleInclusion() })
                     Column(Modifier.weight(1f)) {
                         Text(item.file.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(
@@ -196,7 +196,7 @@ private fun FittedImage(bitmap: ImageBitmap) {
 }
 
 @Composable
-private fun LoadingBadge(visible: Boolean, modifier: Modifier) {
+private fun LoadingBadge(visible: Boolean, modifier: Modifier = Modifier) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f)) {
             CircularProgressIndicator(Modifier.padding(6.dp).size(16.dp), strokeWidth = 2.dp)
@@ -205,7 +205,7 @@ private fun LoadingBadge(visible: Boolean, modifier: Modifier) {
 }
 
 @Composable
-private fun NavButton(visible: Boolean, onClick: () -> Unit, icon: @Composable () -> Unit, modifier: Modifier) {
+private fun NavButton(visible: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier, icon: @Composable () -> Unit) {
     AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         FilledTonalIconButton(
             onClick = onClick,

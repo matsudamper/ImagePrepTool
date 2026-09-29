@@ -1,8 +1,5 @@
 package com.imagepreptool.service
 
-import com.imagepreptool.model.ExternalTool
-import com.imagepreptool.model.ExternalTools
-import com.imagepreptool.model.ImageSize
 import java.awt.geom.AffineTransform
 import java.awt.image.BufferedImage
 import java.io.File
@@ -11,6 +8,9 @@ import java.nio.file.Files
 import javax.imageio.ImageIO
 import javax.imageio.ImageReader
 import kotlin.math.max
+import com.imagepreptool.model.ExternalTool
+import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.model.ImageSize
 
 /** 読み込んだ画像。[size] は向き補正後の元画像サイズ（[image] は縮小済みのことがある） */
 class LoadedImage(val image: BufferedImage, val size: ImageSize)

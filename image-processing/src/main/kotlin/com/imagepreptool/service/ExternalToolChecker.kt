@@ -1,9 +1,9 @@
 package com.imagepreptool.service
 
+import java.io.IOException
 import com.imagepreptool.model.ExternalTool
 import com.imagepreptool.model.ExternalToolStatus
 import com.imagepreptool.model.ExternalTools
-import java.io.IOException
 
 object ExternalToolChecker {
 

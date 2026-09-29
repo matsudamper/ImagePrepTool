@@ -1,6 +1,7 @@
 package com.imagepreptool
 
-import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.key.Key
@@ -14,17 +15,14 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.PhotoLibrary
+import java.awt.Dimension
+import java.io.File
+import javax.swing.UIManager
 import com.imagepreptool.presentation.ExportState
 import com.imagepreptool.presentation.ImagePrepViewModel
 import com.imagepreptool.ui.App
 import com.imagepreptool.ui.DesktopDialogs
-import com.imagepreptool.ui.LocalDialogParent
 import com.imagepreptool.ui.theme.AppTheme
-import java.awt.Dimension
-import java.io.File
-import javax.swing.UIManager
 
 fun main(args: Array<String>) {
     // ファイル選択ダイアログを OS 標準の見た目にする
@@ -65,10 +63,8 @@ fun main(args: Array<String>) {
         ) {
             composeWindow = window
             window.minimumSize = Dimension(1100, 680)
-            CompositionLocalProvider(LocalDialogParent provides window) {
-                AppTheme {
-                    App(viewModel)
-                }
+            AppTheme {
+                App(viewModel, dialogParent = window)
             }
         }
     }

@@ -5,13 +5,13 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.produceState
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
-import com.imagepreptool.model.ExternalTools
-import com.imagepreptool.service.ImageLoader
 import java.io.File
 import java.util.Collections
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.service.ImageLoader
 
 sealed interface ThumbnailState {
     data object Loading : ThumbnailState

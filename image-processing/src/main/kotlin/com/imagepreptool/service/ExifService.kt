@@ -1,17 +1,17 @@
 package com.imagepreptool.service
 
-import com.drew.imaging.ImageMetadataReader
-import com.drew.metadata.Directory
-import com.drew.metadata.Metadata
-import com.drew.metadata.exif.ExifIFD0Directory
-import com.drew.metadata.exif.ExifSubIFDDirectory
-import com.imagepreptool.model.CaptionField
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.TimeZone
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import com.drew.imaging.ImageMetadataReader
+import com.drew.metadata.Directory
+import com.drew.metadata.Metadata
+import com.drew.metadata.exif.ExifIFD0Directory
+import com.drew.metadata.exif.ExifSubIFDDirectory
+import com.imagepreptool.model.CaptionField
 
 object ExifService {
 

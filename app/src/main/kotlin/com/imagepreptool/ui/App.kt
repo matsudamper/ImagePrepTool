@@ -42,7 +42,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -51,27 +50,29 @@ import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.awtTransferable
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.imagepreptool.presentation.ExportState
-import com.imagepreptool.presentation.ImagePrepUiState
-import com.imagepreptool.presentation.ImagePrepViewModel
-import com.imagepreptool.presentation.NoticeAction
-import com.imagepreptool.ui.components.Tooltip
-import com.imagepreptool.ui.theme.AppTheme
 import java.awt.Component
 import java.awt.datatransfer.DataFlavor
 import java.io.File
 import kotlinx.coroutines.launch
-
-/** ファイル選択ダイアログの親にするウィンドウ */
-val LocalDialogParent = staticCompositionLocalOf<Component?> { null }
+import com.imagepreptool.presentation.ExportState
+import com.imagepreptool.presentation.ImagePrepUiState
+import com.imagepreptool.presentation.ImagePrepViewModel
+import com.imagepreptool.presentation.NoticeAction
+import com.imagepreptool.presentation.WorkspaceEvents
+import com.imagepreptool.ui.components.Tooltip
+import com.imagepreptool.ui.theme.AppTheme
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun App(viewModel: ImagePrepViewModel) {
+fun App(
+    viewModel: ImagePrepViewModel,
+    dialogParent: Component?,
+    modifier: Modifier = Modifier,
+) {
     val uiState by viewModel.uiStateFlow.collectAsState()
+    val workspaceEvents: WorkspaceEvents = viewModel
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val parent = LocalDialogParent.current
     var showTools by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) {
@@ -81,14 +82,14 @@ fun App(viewModel: ImagePrepViewModel) {
         }
     }
 
-    val actions = remember(viewModel, parent) {
+    val actions = remember(viewModel, dialogParent) {
         AppActions(
             openFolder = {
-                DesktopDialogs.pickDirectory(parent, "画像のあるフォルダを選択", viewModel.uiStateFlow.value.sourcePath?.let(::File))
+                DesktopDialogs.pickDirectory(dialogParent, "画像のあるフォルダを選択", viewModel.uiStateFlow.value.sourcePath?.let(::File))
                     ?.let(viewModel::openFolder)
             },
             pickImages = {
-                DesktopDialogs.pickImages(parent, viewModel.uiStateFlow.value.sourcePath?.let(::File))
+                DesktopDialogs.pickImages(dialogParent, viewModel.uiStateFlow.value.sourcePath?.let(::File))
                     .takeIf { it.isNotEmpty() }
                     ?.let(viewModel::addFiles)
             },
@@ -121,32 +122,32 @@ fun App(viewModel: ImagePrepViewModel) {
         }
     }
 
-    Surface(color = MaterialTheme.colorScheme.background) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .dragAndDropTarget(shouldStartDragAndDrop = { true }, target = dropTarget),
-    ) {
-        if (!uiState.hasImages) {
-            EmptyState(
-                recentFolders = uiState.recentFolders,
-                isLoading = uiState.isLoading,
-                onOpenFolder = actions.openFolder,
-                onPickImages = actions.pickImages,
-                onOpenRecent = viewModel::openFolder,
-                onForgetRecent = viewModel::forgetRecent,
-            )
-            ToolsButton(uiState, onClick = { showTools = true }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
-        } else {
-            Workspace(uiState, viewModel, actions, onShowTools = { showTools = true })
-        }
+    Surface(color = MaterialTheme.colorScheme.background, modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .dragAndDropTarget(shouldStartDragAndDrop = { true }, target = dropTarget),
+        ) {
+            if (!uiState.hasImages) {
+                EmptyState(
+                    recentFolders = uiState.recentFolders,
+                    isLoading = uiState.isLoading,
+                    onOpenFolder = actions.openFolder,
+                    onPickImages = actions.pickImages,
+                    onOpenRecent = viewModel::openFolder,
+                    onForgetRecent = viewModel::forgetRecent,
+                )
+                ToolsButton(uiState, onClick = { showTools = true }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
+            } else {
+                Workspace(uiState, workspaceEvents, actions, dialogParent, onShowTools = { showTools = true })
+            }
 
-        AnimatedVisibility(visible = dragging, enter = fadeIn(), exit = fadeOut()) {
-            DropOverlay()
-        }
+            AnimatedVisibility(visible = dragging, enter = fadeIn(), exit = fadeOut()) {
+                DropOverlay()
+            }
 
-        SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
-    }
+            SnackbarHost(snackbar, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 24.dp))
+        }
     }
 
     when (val export = uiState.export) {
@@ -186,14 +187,15 @@ private fun droppedFiles(event: DragAndDropEvent): List<File> {
 @Composable
 private fun Workspace(
     uiState: ImagePrepUiState,
-    viewModel: ImagePrepViewModel,
+    events: WorkspaceEvents,
     actions: AppActions,
+    dialogParent: Component?,
     onShowTools: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
-    val parent = LocalDialogParent.current
-    Column(Modifier.fillMaxSize()) {
-        TopBar(uiState, viewModel, actions, onShowTools)
+    Column(modifier.fillMaxSize()) {
+        TopBar(uiState, events, actions, onShowTools)
         Row(Modifier.weight(1f).fillMaxWidth()) {
             ImageListPanel(
                 images = uiState.images,
@@ -201,15 +203,15 @@ private fun Workspace(
                 focusedFile = uiState.focusedFile,
                 selectedFiles = uiState.selectedFiles,
                 tools = uiState.tools,
-                onClickImage = viewModel::clickImage,
-                onToggle = viewModel::toggleIncluded,
-                onSetAll = viewModel::setAllIncluded,
-                onSetSelectionIncluded = viewModel::setSelectionIncluded,
-                onSelectAll = viewModel::selectAll,
-                onClearSelection = viewModel::clearSelection,
-                onMoveFocus = viewModel::moveFocus,
-                onToggleFocused = viewModel::toggleFocusedIncluded,
-                onRemove = viewModel::removeImage,
+                onClickImage = events::clickImage,
+                onToggle = events::toggleIncluded,
+                onSetAll = events::setAllIncluded,
+                onSetSelectionInclusion = events::setSelectionIncluded,
+                onSelectAll = events::selectAll,
+                onClearSelection = events::clearSelection,
+                onMoveFocus = events::moveFocus,
+                onToggleCurrentInclusion = events::toggleFocusedIncluded,
+                onRemove = events::removeImage,
                 onReveal = { file -> DesktopDialogs.revealFile(file)?.let(actions.showMessage) },
                 modifier = Modifier.width(312.dp),
             )
@@ -221,8 +223,8 @@ private fun Workspace(
                 index = index,
                 total = uiState.images.size,
                 options = uiState.options,
-                onToggleIncluded = viewModel::toggleFocusedIncluded,
-                onMove = viewModel::moveFocus,
+                onToggleInclusion = events::toggleFocusedIncluded,
+                onMove = events::moveFocus,
                 modifier = Modifier.weight(1f),
             )
             VerticalDivider(color = colors.outlineVariant)
@@ -236,19 +238,19 @@ private fun Workspace(
                 notices = uiState.notices,
                 includedCount = uiState.includedCount,
                 canExport = uiState.canExport,
-                onOptionsChange = viewModel::updateOptions,
+                onOptionsChange = events::updateOptions,
                 onChooseOutput = {
-                    DesktopDialogs.pickDirectory(parent, "書き出し先のフォルダを選択", uiState.outputDirectory)
-                        ?.let(viewModel::chooseOutputDirectory)
+                    DesktopDialogs.pickDirectory(dialogParent, "書き出し先のフォルダを選択", uiState.outputDirectory)
+                        ?.let(events::chooseOutputDirectory)
                 },
-                onResetOutput = viewModel::resetOutputDirectory,
+                onResetOutput = events::resetOutputDirectory,
                 onNoticeAction = { action ->
                     when (action) {
-                        NoticeAction.ExcludeUnreadable -> viewModel.excludeUnreadable()
+                        NoticeAction.ExcludeUnreadable -> events.excludeUnreadable()
                         NoticeAction.ShowTools -> onShowTools()
                     }
                 },
-                onExport = viewModel::requestExport,
+                onExport = events::requestExport,
                 modifier = Modifier.width(348.dp),
             )
         }
@@ -258,12 +260,13 @@ private fun Workspace(
 @Composable
 private fun TopBar(
     uiState: ImagePrepUiState,
-    viewModel: ImagePrepViewModel,
+    events: WorkspaceEvents,
     actions: AppActions,
     onShowTools: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
-    Surface(color = colors.surface) {
+    Surface(color = colors.surface, modifier = modifier) {
         Column {
             Row(
                 modifier = Modifier.fillMaxWidth().height(52.dp).padding(start = 16.dp, end = 8.dp),
@@ -297,7 +300,7 @@ private fun TopBar(
                 ToolsButton(uiState, onClick = onShowTools)
                 VerticalDivider(Modifier.height(24.dp).padding(horizontal = 4.dp), color = colors.outlineVariant)
                 Tooltip("すべて閉じる") {
-                    IconButton(onClick = viewModel::closeAll) { Icon(Icons.Rounded.Close, "すべて閉じる") }
+                    IconButton(onClick = events::closeAll) { Icon(Icons.Rounded.Close, "すべて閉じる") }
                 }
             }
             HorizontalDivider(color = colors.outlineVariant)

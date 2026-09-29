@@ -1,6 +1,7 @@
 package com.imagepreptool.presentation
 
 import androidx.compose.ui.graphics.ImageBitmap
+import java.io.File
 import com.imagepreptool.model.CaptionField
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
@@ -8,7 +9,6 @@ import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.service.PlannedOutput
-import java.io.File
 
 enum class SelectMode { Single, Toggle, Range }
 

@@ -1,8 +1,8 @@
 package com.imagepreptool.data
 
-import com.imagepreptool.model.EditOptions
 import java.io.File
 import java.util.prefs.Preferences
+import com.imagepreptool.model.EditOptions
 
 /** 前回の設定を次回起動時に復元する */
 interface SettingsStore {
@@ -91,9 +91,15 @@ class InMemorySettingsStore(
     private var recent: List<File> = emptyList(),
 ) : SettingsStore {
     override fun loadOptions() = options
-    override fun saveOptions(options: EditOptions) { this.options = options }
+    override fun saveOptions(options: EditOptions) {
+        this.options = options
+    }
     override fun loadCustomOutputDir() = customOutputDir
-    override fun saveCustomOutputDir(dir: File?) { customOutputDir = dir }
+    override fun saveCustomOutputDir(dir: File?) {
+        customOutputDir = dir
+    }
     override fun loadRecentFolders() = recent
-    override fun saveRecentFolders(folders: List<File>) { recent = folders }
+    override fun saveRecentFolders(folders: List<File>) {
+        recent = folders
+    }
 }

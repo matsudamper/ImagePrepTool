@@ -1,13 +1,13 @@
 package com.imagepreptool.service
 
-import com.imagepreptool.model.EditOptions
-import com.imagepreptool.model.ImageSize
-import com.imagepreptool.model.ResizeMode
 import java.awt.RenderingHints
 import java.awt.image.BufferedImage
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+import com.imagepreptool.model.EditOptions
+import com.imagepreptool.model.ImageSize
+import com.imagepreptool.model.ResizeMode
 
 object Resizer {
 

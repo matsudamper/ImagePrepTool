@@ -58,10 +58,11 @@ fun EmptyState(
     onPickImages: () -> Unit,
     onOpenRecent: (File) -> Unit,
     onForgetRecent: (File) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
     Box(
-        modifier = Modifier.fillMaxSize().background(colors.background).verticalScroll(rememberScrollState()),
+        modifier = modifier.fillMaxSize().background(colors.background).verticalScroll(rememberScrollState()),
         contentAlignment = Alignment.Center,
     ) {
         Column(
