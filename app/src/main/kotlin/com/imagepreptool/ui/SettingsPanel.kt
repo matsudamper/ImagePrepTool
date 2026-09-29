@@ -378,7 +378,7 @@ private fun CaptionTemplateEditor(
             },
         )
         Spacer(Modifier.height(6.dp))
-        Hint("{…} は画像ごとの撮影情報に置き換わります。情報が無い項目は省略されます。Enter で改行できます。")
+        Hint("{…} は画像ごとの撮影情報に置き換わります。情報が無い項目は省略されます。Enter で改行、{ } そのものは {{ }} と書きます。")
         if (template != EditOptions.DEFAULT_CAPTION_TEMPLATE) {
             TextButton(
                 onClick = { onTemplateChange(EditOptions.DEFAULT_CAPTION_TEMPLATE) },

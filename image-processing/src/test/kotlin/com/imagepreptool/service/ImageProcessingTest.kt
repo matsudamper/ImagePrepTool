@@ -88,6 +88,12 @@ class ImageProcessingTest {
         assertEquals("{unknown} f/2.8", CaptionTemplate.render("{unknown} {aperture}", fields))
         assertEquals("", CaptionTemplate.render("{lens}", fields))
         assertEquals(listOf(0..7), CaptionTemplate.tokenRanges("{camera} {nope}"))
+        // エスケープ
+        assertEquals("{camera} = SONY ILCE-7M4", CaptionTemplate.render("{{camera}} = {camera}", fields))
+        assertEquals("{ } {{", CaptionTemplate.render("{{ }} {{{{", fields))
+        assertEquals("{SONY ILCE-7M4}", CaptionTemplate.render("{{{camera}}}", fields))
+        assertEquals(listOf(10..17), CaptionTemplate.tokenRanges("{{camera}}{camera}"))
+        assertEquals("{{a}}", CaptionTemplate.escape("{a}"))
     }
 
     @Test
