@@ -39,6 +39,9 @@ class ImageProcessingTest {
         val fit = EditOptions(resizeMode = ResizeMode.Fit, fitWidth = 1920, fitHeight = 1080)
         assertEquals(ImageSize(1440, 1080), Resizer.targetSize(ImageSize(4032, 3024), fit))
         assertEquals(ImageSize(4032, 3024), Resizer.targetSize(ImageSize(4032, 3024), EditOptions(resizeMode = ResizeMode.None)))
+        // 縮小のみを外すと小さい画像も指定サイズまで拡大する
+        assertEquals(ImageSize(2048, 1536), Resizer.targetSize(ImageSize(800, 600), options.copy(onlyScaleDown = false)))
+        assertEquals(ImageSize(1440, 1080), Resizer.targetSize(ImageSize(800, 600), fit.copy(onlyScaleDown = false)))
     }
 
     @Test

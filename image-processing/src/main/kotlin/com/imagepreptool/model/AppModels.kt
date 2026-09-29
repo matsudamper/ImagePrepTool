@@ -64,6 +64,8 @@ data class EditOptions(
     val longEdge: Int = 2048,
     val fitWidth: Int = 1920,
     val fitHeight: Int = 1080,
+    /** 指定サイズより小さい画像は拡大しない */
+    val onlyScaleDown: Boolean = true,
     val outputFormat: OutputFormat = OutputFormat.Jpeg,
     val quality: Int = 85,
     val captionEnabled: Boolean = true,

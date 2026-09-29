@@ -35,6 +35,7 @@ class PreferencesSettingsStore(
                     .coerceIn(EditOptions.MIN_CAPTION_PERCENT, EditOptions.MAX_CAPTION_PERCENT),
                 captionStyle = enumOr(prefs.get("captionStyle", null), d.captionStyle),
                 fileNameSuffix = prefs.get("fileNameSuffix", d.fileNameSuffix),
+                onlyScaleDown = prefs.getBoolean("onlyScaleDown", d.onlyScaleDown),
             )
         }.getOrDefault(d)
     }
@@ -52,6 +53,7 @@ class PreferencesSettingsStore(
         prefs.putFloat("captionSizePercent", options.captionSizePercent)
         prefs.put("captionStyle", options.captionStyle.name)
         prefs.put("fileNameSuffix", options.fileNameSuffix)
+        prefs.putBoolean("onlyScaleDown", options.onlyScaleDown)
     }
 
     /** 旧バージョンの「カスタムテキスト」設定があればテンプレートとして引き継ぐ */

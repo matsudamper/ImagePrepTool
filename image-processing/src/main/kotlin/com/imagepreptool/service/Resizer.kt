@@ -11,13 +11,24 @@ import com.imagepreptool.model.ResizeMode
 
 object Resizer {
 
-    /** 設定から出力サイズを求める。拡大はしない */
+    /** 設定から出力サイズを求める。[EditOptions.onlyScaleDown] のときは拡大しない */
     fun targetSize(source: ImageSize, options: EditOptions): ImageSize = when (options.resizeMode) {
         ResizeMode.None -> source
-        ResizeMode.LongEdge -> fitWithin(source, options.longEdge, options.longEdge)
-        ResizeMode.Fit -> fitWithin(source, options.fitWidth, options.fitHeight)
+        ResizeMode.LongEdge -> scaleToFit(source, options.longEdge, options.longEdge, options.onlyScaleDown)
+        ResizeMode.Fit -> scaleToFit(source, options.fitWidth, options.fitHeight, options.onlyScaleDown)
     }
 
+    private fun scaleToFit(source: ImageSize, maxWidth: Int, maxHeight: Int, onlyScaleDown: Boolean): ImageSize {
+        if (onlyScaleDown) return fitWithin(source, maxWidth, maxHeight)
+        if (maxWidth <= 0 || maxHeight <= 0) return source
+        val scale = min(maxWidth.toDouble() / source.width, maxHeight.toDouble() / source.height)
+        return ImageSize(
+            (source.width * scale).roundToInt().coerceAtLeast(1),
+            (source.height * scale).roundToInt().coerceAtLeast(1),
+        )
+    }
+
+    /** 枠に収まるよう縮小する。拡大はしない */
     fun fitWithin(source: ImageSize, maxWidth: Int, maxHeight: Int): ImageSize {
         if (maxWidth <= 0 || maxHeight <= 0) return source
         val scale = min(1.0, min(maxWidth.toDouble() / source.width, maxHeight.toDouble() / source.height))

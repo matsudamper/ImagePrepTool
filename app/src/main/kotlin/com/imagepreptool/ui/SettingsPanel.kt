@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -182,7 +183,8 @@ private fun SizeSection(
                         }
                     }
                 }
-                Hint("長い方の辺をこの長さに縮小します。小さい画像は拡大しません。")
+                OnlyScaleDownToggle(options, onChange)
+                Hint(if (options.onlyScaleDown) "長い方の辺がこの長さになるよう縮小します。" else "長い方の辺がこの長さになるよう拡大・縮小します。")
             }
             ResizeMode.Fit -> {
                 Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -204,7 +206,8 @@ private fun SizeSection(
                         modifier = Modifier.weight(1f),
                     )
                 }
-                Hint("縦横比を保ったまま、この枠に収まるよう縮小します。")
+                OnlyScaleDownToggle(options, onChange)
+                Hint(if (options.onlyScaleDown) "縦横比を保ったまま、この枠に収まるよう縮小します。" else "縦横比を保ったまま、この枠いっぱいになるよう拡大・縮小します。")
             }
         }
     }
@@ -468,6 +471,28 @@ private fun OutputSection(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun OnlyScaleDownToggle(
+    options: EditOptions,
+    onChange: ((EditOptions) -> EditOptions) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier
+            .clip(MaterialTheme.shapes.small)
+            .clickable { onChange { it.copy(onlyScaleDown = !it.onlyScaleDown) } }
+            .padding(end = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(
+            checked = options.onlyScaleDown,
+            onCheckedChange = { checked -> onChange { it.copy(onlyScaleDown = checked) } },
+            modifier = Modifier.size(32.dp),
+        )
+        Text("縮小のみ（小さい画像は拡大しない）", style = MaterialTheme.typography.bodyMedium)
     }
 }
 
