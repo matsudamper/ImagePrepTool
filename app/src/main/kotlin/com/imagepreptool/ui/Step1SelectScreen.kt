@@ -24,9 +24,9 @@ import com.imagepreptool.presentation.ImagePrepUiState
 import com.imagepreptool.presentation.ImagePrepViewModel
 
 @Composable
-fun Step1SelectScreen(uiState: ImagePrepUiState, viewModel: ImagePrepViewModel) {
+fun Step1SelectScreen(uiState: ImagePrepUiState, viewModel: ImagePrepViewModel, modifier: Modifier = Modifier) {
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -100,9 +100,9 @@ fun Step1SelectScreen(uiState: ImagePrepUiState, viewModel: ImagePrepViewModel) 
 }
 
 @Composable
-fun ToolCheckPanel(uiState: ImagePrepUiState) {
+fun ToolCheckPanel(uiState: ImagePrepUiState, modifier: Modifier = Modifier) {
     if (!uiState.toolsChecked) return
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text("外部コマンド確認（PATH 上の cwebp / dwebp / magick / heif-convert）", fontWeight = FontWeight.SemiBold)
             uiState.toolStatuses.forEach { tool ->

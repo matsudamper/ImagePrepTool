@@ -22,12 +22,12 @@ import com.imagepreptool.presentation.ImagePrepUiState
 import com.imagepreptool.presentation.ImagePrepViewModel
 
 @Composable
-fun App() {
+fun App(modifier: Modifier = Modifier) {
     val viewModel = remember { ImagePrepViewModel() }
     val uiState by viewModel.uiStateFlow.collectAsState()
 
     MaterialTheme {
-        Surface(modifier = Modifier.fillMaxSize()) {
+        Surface(modifier = modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 TabRow(selectedTabIndex = uiState.currentStep.ordinal) {
                     WorkflowStep.entries.forEach { step ->
