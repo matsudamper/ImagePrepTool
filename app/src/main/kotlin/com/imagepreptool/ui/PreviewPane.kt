@@ -3,6 +3,7 @@ package com.imagepreptool.ui
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.desktop.ui.tooling.preview.Preview
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -46,8 +47,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Canvas
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventType
@@ -57,9 +61,12 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import java.io.File
 import kotlin.math.pow
 import kotlin.math.roundToInt
 import com.imagepreptool.model.EditOptions
+import com.imagepreptool.model.ImageSize
+import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.presentation.ImageItem
 import com.imagepreptool.presentation.PreviewState
 import com.imagepreptool.resources.Res
@@ -82,6 +89,30 @@ fun PreviewPane(
     index: Int,
     total: Int,
     options: EditOptions,
+    onMove: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val zoom = remember(preview.file) { PreviewZoomState(initialScale = PreviewZoomState.MIN_SCALE, initialOffset = Offset.Zero) }
+    PreviewPaneContent(
+        preview = preview,
+        item = item,
+        index = index,
+        total = total,
+        options = options,
+        zoom = zoom,
+        onMove = onMove,
+        modifier = modifier,
+    )
+}
+
+@Composable
+private fun PreviewPaneContent(
+    preview: PreviewState,
+    item: ImageItem?,
+    index: Int,
+    total: Int,
+    options: EditOptions,
+    zoom: PreviewZoomState,
     onMove: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -125,7 +156,6 @@ fun PreviewPane(
         }
 
         // 画像
-        val zoom = remember(preview.file) { PreviewZoomState() }
         Box(
             modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds().hoverable(interaction).previewZoomGestures(zoom),
             contentAlignment = Alignment.Center,
@@ -228,10 +258,10 @@ private fun FittedImage(bitmap: ImageBitmap, zoom: PreviewZoomState) {
 }
 
 @Stable
-private class PreviewZoomState {
-    var scale by mutableFloatStateOf(MIN_SCALE)
+private class PreviewZoomState(initialScale: Float, initialOffset: Offset) {
+    var scale by mutableFloatStateOf(initialScale)
         private set
-    var offset by mutableStateOf(Offset.Zero)
+    var offset by mutableStateOf(initialOffset)
         private set
 
     val isTransformed: Boolean get() = scale != MIN_SCALE || offset != Offset.Zero
@@ -328,4 +358,61 @@ private fun ErrorContent(message: String) {
         Spacer(Modifier.height(4.dp))
         Text(message, style = MaterialTheme.typography.bodySmall, color = ext.canvasContent)
     }
+}
+
+@Preview
+@Composable
+private fun PreviewPaneFittedPreview() {
+    PreviewPaneForPreview(zoom = PreviewZoomState(initialScale = PreviewZoomState.MIN_SCALE, initialOffset = Offset.Zero))
+}
+
+@Preview
+@Composable
+private fun PreviewPaneZoomedPreview() {
+    PreviewPaneForPreview(zoom = PreviewZoomState(initialScale = 4f, initialOffset = Offset(120f, -60f)))
+}
+
+@Composable
+private fun PreviewPaneForPreview(zoom: PreviewZoomState) {
+    val processed = remember { checkerboardBitmap(width = 48, height = 32, cellSize = 4) }
+    val original = remember { checkerboardBitmap(width = 480, height = 320, cellSize = 40) }
+    AppTheme(darkTheme = false) {
+        Box(Modifier.size(width = 720.dp, height = 480.dp)) {
+            PreviewPaneContent(
+                preview = PreviewState(
+                    file = File("sample.jpg"),
+                    original = original,
+                    processed = processed,
+                    originalSize = ImageSize(original.width, original.height),
+                    outputSize = ImageSize(processed.width, processed.height),
+                    outputFormat = OutputFormat.Jpeg,
+                    captionFields = mapOf(),
+                    loading = false,
+                    error = null,
+                ),
+                item = ImageItem(File("sample.jpg")),
+                index = 0,
+                total = 3,
+                options = EditOptions(),
+                zoom = zoom,
+                onMove = {},
+            )
+        }
+    }
+}
+
+/** ピクセルの粗さが分かるよう、市松模様に斜めのグラデーションを重ねた画像 */
+private fun checkerboardBitmap(width: Int, height: Int, cellSize: Int): ImageBitmap {
+    val bitmap = ImageBitmap(width, height)
+    val canvas = Canvas(bitmap)
+    val paint = Paint()
+    for (y in 0 until height step cellSize) {
+        for (x in 0 until width step cellSize) {
+            val isDark = (x / cellSize + y / cellSize) % 2 == 0
+            val shade = (x + y).toFloat() / (width + height)
+            paint.color = if (isDark) Color(0.2f, 0.3f + shade * 0.5f, 0.6f) else Color(0.95f, 0.85f - shade * 0.4f, 0.5f)
+            canvas.drawRect(x.toFloat(), y.toFloat(), (x + cellSize).toFloat(), (y + cellSize).toFloat(), paint)
+        }
+    }
+    return bitmap
 }
