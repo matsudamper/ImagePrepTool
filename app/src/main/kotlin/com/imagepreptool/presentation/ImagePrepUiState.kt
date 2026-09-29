@@ -119,7 +119,6 @@ data class ImagePrepUiState(
         fun setInputValid(field: String, valid: Boolean)
         fun chooseOutputDirectory(dir: File)
         fun resetOutputDirectory()
-        fun refreshTools()
         fun requestExport()
         fun resolveConflicts(policy: ConflictPolicy?)
         fun cancelExport()
