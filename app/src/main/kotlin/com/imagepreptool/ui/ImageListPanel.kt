@@ -60,6 +60,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import java.io.File
 import com.imagepreptool.model.ExternalTools
@@ -99,7 +100,8 @@ fun ImageListPanel(
     val gridState = rememberLazyGridState()
     val focusRequester = remember { FocusRequester() }
     val imageCount = imageGroups.sumOf { it.images.size }
-    val folderHeaderHeightPx = with(LocalDensity.current) { FolderHeaderHeight.roundToPx() }
+    val density = LocalDensity.current
+    val folderHeaderHeightPx = with(density) { FolderHeaderHeight.roundToPx() }
 
     LaunchedEffect(focusedFile) {
         val index = focusedFile?.let { gridIndexOf(imageGroups, it) } ?: return@LaunchedEffect
@@ -137,17 +139,17 @@ fun ImageListPanel(
         }
 
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 84.dp),
+            columns = GridCells.Adaptive(minSize = ThumbnailMinSize),
             state = gridState,
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(start = GridHorizontalPadding, end = GridHorizontalPadding, bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(GridColumnSpacing),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier
                 .weight(1f)
                 .focusRequester(focusRequester)
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                    val columns = gridState.layoutInfo.visibleItemsInfo.map { it.column }.distinct().size.coerceAtLeast(1)
+                    val columns = density.adaptiveColumnCount(gridState.layoutInfo.viewportSize.width)
                     when (event.key) {
                         Key.DirectionLeft -> onMoveFocus(-1)
                         Key.DirectionRight -> onMoveFocus(1)
@@ -233,7 +235,17 @@ internal fun verticalMoveDelta(imageGroups: List<ImageGroup>, focusedFile: File?
     return target - (groupStart + indexInGroup)
 }
 
+/** GridCells.Adaptive と同じ計算でグリッドの列数を求める。見えている行が短い位置までスクロールしていても正しい列数になる */
+private fun Density.adaptiveColumnCount(viewportWidthPx: Int): Int {
+    val gridWidth = viewportWidthPx - (GridHorizontalPadding * 2).roundToPx()
+    val spacing = GridColumnSpacing.roundToPx()
+    return ((gridWidth + spacing) / (ThumbnailMinSize.roundToPx() + spacing)).coerceAtLeast(1)
+}
+
 private val FolderHeaderHeight = 44.dp
+private val ThumbnailMinSize = 84.dp
+private val GridHorizontalPadding = 12.dp
+private val GridColumnSpacing = 8.dp
 
 @Composable
 private fun FolderHeader(group: ImageGroup, onOpen: () -> Unit, onRemove: () -> Unit) {
