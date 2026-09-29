@@ -43,7 +43,8 @@ compose.desktop {
             packageName = "ImagePrepTool"
             // jpackage の MSI は同じバージョンだと上書きインストールできないため、CI のビルド番号をパッチ番号にする
             packageVersion = "0.1.${providers.environmentVariable("GITHUB_RUN_NUMBER").getOrElse("0")}"
-            description = "画像を公開用に整える（リサイズ・形式変換・撮影情報の書き込み）"
+            // jpackage の MSI は en-us（コードページ 1252）で生成されるため、日本語を含めると WiX がエラーになる
+            description = "Prepare images for publishing (resize, convert format, write shooting info)"
             vendor = "ImagePrepTool"
 
             windows {
