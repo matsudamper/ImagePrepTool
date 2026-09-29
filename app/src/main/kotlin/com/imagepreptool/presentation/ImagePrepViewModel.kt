@@ -580,7 +580,8 @@ class ImagePrepViewModel(
             )
         }
 
-        viewModelStateFlow.map { it.options }.distinctUntilChanged().collectLatestSafe { options ->
+        // 非 HEIF 画像はツール確認前に開かれることがあり、cwebp が見つかったら WebP のプレビューを作り直す
+        viewModelStateFlow.map { it.options to (it.tools ?: tools) }.distinctUntilChanged().collectLatestSafe { (options, currentTools) ->
             mutate { it.copy(preview = it.preview.copy(loading = true)) }
             val outputFormat = OutputPlanner.resolveFormat(file, options.outputFormat)
             // cwebp は外部プロセスで重いため、品質スライダー操作中は待ってからまとめてエンコードする
@@ -588,14 +589,14 @@ class ImagePrepViewModel(
             val outputSize = Resizer.targetSize(source.loaded.size, options)
             val image = source.loaded.image
             val renderSize = Resizer.fitWithin(outputSize, image.width, image.height)
-            val processor = ImageProcessor(tools)
+            val processor = ImageProcessor(currentTools)
             val caption = if (options.captionEnabled) {
                 CaptionTemplate.render(options.captionTemplate, source.fields).takeIf { it.isNotBlank() }
             } else {
                 null
             }
             val rendered = runInterruptible(Dispatchers.Default) {
-                renderWithOutputQuality(processor, image, caption, options, renderSize, outputFormat, tools)
+                renderWithOutputQuality(processor, image, caption, options, renderSize, outputFormat, currentTools)
             }
             val bitmap = withContext(Dispatchers.Default) { rendered.image.toComposeImageBitmap() }
             mutate {
