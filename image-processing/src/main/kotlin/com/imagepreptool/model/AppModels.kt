@@ -103,7 +103,7 @@ enum class ExternalTool(val command: String, val versionArg: String, val purpose
     Cwebp("cwebp", "-version", "WebP 形式での書き出し"),
     HeifDec("heif-dec", "--version", "HEIC / HEIF の読み込み"),
     HeifConvert("heif-convert", "--version", "HEIC / HEIF の読み込み（旧名）"),
-    Magick("magick", "-version", "HEIC / HEIF の読み込み（代替）"),
+    Magick("magick", "-version", "HEIC / HEIF の読み込み"),
 }
 
 data class ExternalToolStatus(
@@ -121,6 +121,11 @@ data class ExternalTools(val statuses: List<ExternalToolStatus>) {
     val heifDecoder: ExternalTool?
         get() = listOf(ExternalTool.HeifDec, ExternalTool.HeifConvert, ExternalTool.Magick)
             .firstOrNull(::isAvailable)
+
+    /** 画面で揃えるべきツール。HEIF は使えるデコーダがあればそれ、無ければ winget で入る magick だけを示す */
+    val requiredStatuses: List<ExternalToolStatus>
+        get() = listOf(ExternalTool.Cwebp, heifDecoder ?: ExternalTool.Magick)
+            .mapNotNull { tool -> statuses.firstOrNull { it.tool == tool } }
 
     companion object {
         val None = ExternalTools(emptyList())
