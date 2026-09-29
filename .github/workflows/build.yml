@@ -50,10 +50,8 @@ jobs:
     outputs:
       artifact_name: ${{ steps.name.outputs.artifact_name }}
       portable_artifact_url: ${{ steps.upload_portable.outputs.artifact-url }}
-      portable_qr_url: ${{ steps.portable_qr_artifact.outputs.artifact-url }}
       installer_artifact_url: ${{ steps.upload_installer.outputs.artifact-url }}
       s3_url: ${{ steps.upload_s3.outputs.url }}
-      s3_qr_url: ${{ steps.s3_qr_artifact.outputs.artifact-url }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -114,37 +112,6 @@ jobs:
         with:
           file_path: ${{ env.PORTABLE_ZIP_PATH }}
 
-      - name: Generate QR codes
-        if: github.event_name == 'pull_request'
-        shell: bash
-        env:
-          GITHUB_URL: ${{ steps.upload_portable.outputs.artifact-url }}
-          S3_URL: ${{ steps.upload_s3.outputs.url }}
-        run: |
-          pip install "qrcode[pil]" --quiet
-          python -c "import qrcode, sys; qrcode.make(sys.argv[1]).save('qrcode-github.png')" "${GITHUB_URL}"
-          if [ -n "${S3_URL}" ]; then
-            python -c "import qrcode, sys; qrcode.make(sys.argv[1]).save('qrcode-s3.png')" "${S3_URL}"
-          fi
-
-      - name: Upload GitHub QR artifact
-        id: portable_qr_artifact
-        if: github.event_name == 'pull_request'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: portable-qr-code-github
-          path: qrcode-github.png
-          archive: false
-
-      - name: Upload S3 QR artifact
-        id: s3_qr_artifact
-        if: github.event_name == 'pull_request' && steps.upload_s3.outputs.url != ''
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: portable-qr-code-s3
-          path: qrcode-s3.png
-          archive: false
-
   report-artifacts:
     runs-on: ubuntu-latest
     needs: [build-linux, package-windows-exe]
@@ -155,10 +122,8 @@ jobs:
         env:
           ARTIFACT_NAME: ${{ needs.package-windows-exe.outputs.artifact_name }}
           PORTABLE_ARTIFACT_URL: ${{ needs.package-windows-exe.outputs.portable_artifact_url }}
-          PORTABLE_QR_URL: ${{ needs.package-windows-exe.outputs.portable_qr_url }}
           INSTALLER_ARTIFACT_URL: ${{ needs.package-windows-exe.outputs.installer_artifact_url }}
           S3_URL: ${{ needs.package-windows-exe.outputs.s3_url }}
-          S3_QR_URL: ${{ needs.package-windows-exe.outputs.s3_qr_url }}
           WINDOWS_JOB_RESULT: ${{ needs.package-windows-exe.result }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -182,13 +147,13 @@ jobs:
           fi
 
           if [ -n "$S3_URL" ]; then
-            s3_row="| ☁️ S3 (portable) | zip | [Download](${S3_URL}) | [View](${S3_QR_URL}) |"
+            s3_row="| ☁️ S3 (portable) | zip | [Download](${S3_URL}) |"
           else
-            s3_row="| ☁️ S3 (portable) | - | ⚠️ アップロード失敗 ([run](${RUN_URL})) | - |"
+            s3_row="| ☁️ S3 (portable) | - | ⚠️ アップロード失敗 ([run](${RUN_URL})) |"
           fi
           installer_row=""
           if [ -n "$INSTALLER_ARTIFACT_URL" ]; then
-            installer_row="| 🐙 GitHub Artifacts (installer) | zip | [Download](${INSTALLER_ARTIFACT_URL}) | - |"
+            installer_row="| 🐙 GitHub Artifacts (installer) | zip | [Download](${INSTALLER_ARTIFACT_URL}) |"
           fi
 
           echo "failed=false" >> "$GITHUB_OUTPUT"
@@ -196,9 +161,9 @@ jobs:
             echo "message<<EOF"
             echo "✅ Portable build is ready!"
             echo ""
-            echo "| Storage | 圧縮方式 | Download Link | QR Code |"
-            echo "| :--- | :--- | :--- | :--- |"
-            echo "| 🐙 GitHub Artifacts (portable) | zip | [Download](${PORTABLE_ARTIFACT_URL}) | [View](${PORTABLE_QR_URL}) |"
+            echo "| Storage | 圧縮方式 | Download Link |"
+            echo "| :--- | :--- | :--- |"
+            echo "| 🐙 GitHub Artifacts (portable) | zip | [Download](${PORTABLE_ARTIFACT_URL}) |"
             echo "${s3_row}"
             if [ -n "$installer_row" ]; then
               echo "${installer_row}"
