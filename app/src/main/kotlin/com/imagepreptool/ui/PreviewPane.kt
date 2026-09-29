@@ -5,6 +5,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -21,8 +23,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
@@ -30,19 +34,32 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import kotlin.math.pow
+import kotlin.math.roundToInt
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.presentation.ImageItem
 import com.imagepreptool.presentation.PreviewState
@@ -112,8 +129,9 @@ fun PreviewPane(
         }
 
         // 画像
+        val zoom = remember(preview.file) { PreviewZoomState() }
         Box(
-            modifier = Modifier.weight(1f).fillMaxWidth().hoverable(interaction),
+            modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds().hoverable(interaction).previewZoomGestures(zoom),
             contentAlignment = Alignment.Center,
         ) {
             val bitmap: ImageBitmap? = when (mode) {
@@ -122,10 +140,15 @@ fun PreviewPane(
             }
             when {
                 preview.error != null -> ErrorContent(preview.error)
-                bitmap != null -> FittedImage(bitmap)
+                bitmap != null -> FittedImage(bitmap, zoom)
                 preview.file != null -> CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.5.dp, color = ext.canvasContent)
                 else -> Text("画像を選択するとプレビューが表示されます", color = ext.canvasContent)
             }
+
+            ZoomResetButton(
+                zoom = zoom,
+                modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
+            )
 
             LoadingBadge(
                 visible = preview.loading && bitmap != null,
@@ -174,25 +197,107 @@ fun PreviewPane(
     }
 }
 
-/** 余白を残して画面に収まる大きさで表示する（拡大はしない） */
+/**
+ * 余白を残して画面いっぱいに収まる大きさで表示する。
+ * 書き出しサイズが小さくても表示サイズは変えず、引き伸ばしで劣化具合を確認できるようにする
+ */
 @Composable
-private fun FittedImage(bitmap: ImageBitmap) {
+private fun FittedImage(bitmap: ImageBitmap, zoom: PreviewZoomState) {
     BoxWithConstraints(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 56.dp, vertical = 28.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer {
+                scaleX = zoom.scale
+                scaleY = zoom.scale
+                translationX = zoom.offset.x
+                translationY = zoom.offset.y
+            }
+            .padding(horizontal = 56.dp, vertical = 28.dp),
         contentAlignment = Alignment.Center,
     ) {
+        val fitScale = minOf(constraints.maxWidth.toFloat() / bitmap.width, constraints.maxHeight.toFloat() / bitmap.height)
         val density = LocalDensity.current
-        val naturalWidth = with(density) { bitmap.width.toDp() }
-        val naturalHeight = with(density) { bitmap.height.toDp() }
-        val scale = minOf(1f, maxWidth / naturalWidth, maxHeight / naturalHeight)
+        val isMagnified = fitScale * zoom.scale > 1f
         Image(
             bitmap = bitmap,
             contentDescription = "プレビュー",
             contentScale = ContentScale.FillBounds,
+            // 拡大表示ではピクセルをぼかさずに見せ、劣化をそのまま確認できるようにする
+            filterQuality = if (isMagnified) FilterQuality.None else DrawScope.DefaultFilterQuality,
             modifier = Modifier
-                .size(naturalWidth * scale, naturalHeight * scale)
+                .size(with(density) { (bitmap.width * fitScale).toDp() }, with(density) { (bitmap.height * fitScale).toDp() })
                 .shadow(18.dp, clip = false),
         )
+    }
+}
+
+@Stable
+private class PreviewZoomState {
+    var scale by mutableFloatStateOf(MIN_SCALE)
+        private set
+    var offset by mutableStateOf(Offset.Zero)
+        private set
+
+    val isTransformed: Boolean get() = scale != MIN_SCALE || offset != Offset.Zero
+
+    /** [focus] の位置にある画像上の点を動かさずに拡大縮小する。座標はビューポート中心基準 */
+    fun zoomAt(focus: Offset, factor: Float) {
+        val newScale = (scale * factor).coerceIn(MIN_SCALE, MAX_SCALE)
+        if (newScale == MIN_SCALE) {
+            reset()
+            return
+        }
+        offset = focus - (focus - offset) * (newScale / scale)
+        scale = newScale
+    }
+
+    fun pan(delta: Offset) {
+        if (scale == MIN_SCALE) return
+        offset += delta
+    }
+
+    fun reset() {
+        scale = MIN_SCALE
+        offset = Offset.Zero
+    }
+
+    companion object {
+        const val MIN_SCALE = 1f
+        const val MAX_SCALE = 32f
+        const val WHEEL_ZOOM_STEP = 1.15f
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+private fun Modifier.previewZoomGestures(zoom: PreviewZoomState): Modifier = this
+    .onPointerEvent(PointerEventType.Scroll) { event ->
+        val change = event.changes.first()
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val factor = PreviewZoomState.WHEEL_ZOOM_STEP.pow(-change.scrollDelta.y)
+        zoom.zoomAt(change.position - center, factor)
+        change.consume()
+    }
+    .pointerInput(zoom) {
+        detectDragGestures { change, dragAmount ->
+            change.consume()
+            zoom.pan(dragAmount)
+        }
+    }
+    .pointerInput(zoom) {
+        detectTapGestures(onDoubleTap = { zoom.reset() })
+    }
+
+@Composable
+private fun ZoomResetButton(zoom: PreviewZoomState, modifier: Modifier = Modifier) {
+    AnimatedVisibility(visible = zoom.isTransformed, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
+        FilledTonalButton(
+            onClick = { zoom.reset() },
+            colors = ButtonDefaults.filledTonalButtonColors(
+                containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+            ),
+        ) {
+            Text("${(zoom.scale * 100).roundToInt()}% · 元に戻す", style = MaterialTheme.typography.labelMedium.merge(MonoNumberStyle))
+        }
     }
 }
 
