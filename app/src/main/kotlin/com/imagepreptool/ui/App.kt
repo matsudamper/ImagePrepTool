@@ -47,7 +47,9 @@ import androidx.compose.ui.unit.dp
 import java.awt.Component
 import java.awt.datatransfer.DataFlavor
 import java.io.File
+import java.io.IOException
 import kotlinx.coroutines.launch
+import com.imagepreptool.AppRelauncher
 import com.imagepreptool.presentation.ExportState
 import com.imagepreptool.presentation.ImagePrepUiState
 import com.imagepreptool.presentation.ImagePrepViewModel
@@ -68,6 +70,7 @@ import org.jetbrains.compose.resources.painterResource
 fun App(
     viewModel: ImagePrepViewModel,
     dialogParent: Component?,
+    exitApp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiStateFlow.collectAsState()
@@ -167,7 +170,18 @@ fun App(
     }
 
     if (showTools) {
-        ToolsDialog(uiState.tools, onRecheck = listener::refreshTools, onClose = { showTools = false })
+        ToolsDialog(
+            tools = uiState.tools,
+            onRestart = {
+                try {
+                    AppRelauncher.launchNewInstance()
+                    exitApp()
+                } catch (e: IOException) {
+                    actions.showMessage("再起動できませんでした: ${e.message}")
+                }
+            },
+            onClose = { showTools = false },
+        )
     }
 }
 

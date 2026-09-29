@@ -238,14 +238,14 @@ private fun Stat(label: String, value: Int, color: androidx.compose.ui.graphics.
 }
 
 @Composable
-fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
+fun ToolsDialog(tools: ExternalTools?, onRestart: () -> Unit, onClose: () -> Unit, modifier: Modifier = Modifier) {
     AppDialog(
         modifier = modifier,
         onDismiss = onClose,
         title = "外部ツール",
         width = 540,
         buttons = {
-            TextButton(onClick = onRecheck) { Text("再確認") }
+            TextButton(onClick = onRestart) { Text("アプリを再起動") }
             Button(onClick = onClose) { Text("閉じる") }
         },
     ) {
@@ -297,7 +297,7 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            "インストール後は PATH がアプリに反映されないため、アプリを再起動してください。",
+            "インストール後は PATH がアプリに反映されないため、「アプリを再起動」を押してください。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )

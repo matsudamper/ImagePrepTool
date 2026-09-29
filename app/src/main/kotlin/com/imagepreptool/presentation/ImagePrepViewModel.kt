@@ -80,7 +80,6 @@ class ImagePrepViewModel(
         override fun setInputValid(field: String, valid: Boolean) = this@ImagePrepViewModel.setInputValid(field, valid)
         override fun chooseOutputDirectory(dir: File) = this@ImagePrepViewModel.chooseOutputDirectory(dir)
         override fun resetOutputDirectory() = this@ImagePrepViewModel.resetOutputDirectory()
-        override fun refreshTools() = this@ImagePrepViewModel.refreshTools()
         override fun requestExport() = this@ImagePrepViewModel.requestExport()
         override fun resolveConflicts(policy: ConflictPolicy?) = this@ImagePrepViewModel.resolveConflicts(policy)
         override fun cancelExport() = this@ImagePrepViewModel.cancelExport()

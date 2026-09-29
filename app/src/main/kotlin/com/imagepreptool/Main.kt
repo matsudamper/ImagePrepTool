@@ -32,12 +32,13 @@ fun main(args: Array<String>) {
     application {
         val viewModel = remember { ImagePrepViewModel().also { vm -> if (initial.isNotEmpty()) vm.uiStateFlow.value.listener.addFiles(initial) } }
         var composeWindow: java.awt.Window? = null
+        val exitApp = {
+            viewModel.uiStateFlow.value.listener.cancelExport()
+            exitApplication()
+        }
         val state = rememberWindowState(width = 1360.dp, height = 860.dp, position = WindowPosition.Aligned(androidx.compose.ui.Alignment.Center))
         Window(
-            onCloseRequest = {
-                viewModel.uiStateFlow.value.listener.cancelExport()
-                exitApplication()
-            },
+            onCloseRequest = exitApp,
             title = "ImagePrepTool",
             icon = painterResource(Res.drawable.ic_photo_library),
             state = state,
@@ -64,7 +65,7 @@ fun main(args: Array<String>) {
             composeWindow = window
             window.minimumSize = Dimension(1100, 680)
             AppTheme {
-                App(viewModel, dialogParent = window)
+                App(viewModel, dialogParent = window, exitApp = exitApp)
             }
         }
     }
