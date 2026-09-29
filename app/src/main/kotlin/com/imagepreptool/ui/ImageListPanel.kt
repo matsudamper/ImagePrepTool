@@ -139,7 +139,7 @@ fun ImageListPanel(
                         Key.DirectionRight -> onMoveFocus(1)
                         Key.DirectionUp -> onMoveFocus(-columns)
                         Key.DirectionDown -> onMoveFocus(columns)
-                        Key.Delete -> focusedFile?.let(onRemove)
+                        Key.Delete -> if (isSelectionMode) onRemoveSelection() else focusedFile?.let(onRemove)
                         Key.Escape -> onClearSelection()
                         Key.A -> if (event.isCtrlPressed || event.isMetaPressed) onSelectAll() else return@onPreviewKeyEvent false
                         Key.Z -> if (event.isCtrlPressed || event.isMetaPressed) onUndoRemoval() else return@onPreviewKeyEvent false
