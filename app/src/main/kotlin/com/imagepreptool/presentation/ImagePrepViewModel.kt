@@ -1,27 +1,65 @@
 package com.imagepreptool.presentation
 
+import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.imagepreptool.data.PreferencesSettingsStore
+import com.imagepreptool.data.SettingsStore
+import com.imagepreptool.model.CaptionSource
+import com.imagepreptool.model.ConflictPolicy
 import com.imagepreptool.model.EditOptions
-import com.imagepreptool.model.ImageSelection
+import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.ProcessResult
-import com.imagepreptool.model.WorkflowStep
+import com.imagepreptool.service.ExifService
 import com.imagepreptool.service.ExternalToolChecker
+import com.imagepreptool.service.ImageLoader
 import com.imagepreptool.service.ImageProcessor
+import com.imagepreptool.service.LoadedImage
+import com.imagepreptool.service.OutputPlanner
+import com.imagepreptool.service.PlannedOutput
+import com.imagepreptool.service.Resizer
 import java.io.File
+import java.util.Collections
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 
-class ImagePrepViewModel : ViewModel() {
+class ImagePrepViewModel(
+    private val settings: SettingsStore = PreferencesSettingsStore(),
+    private val checkTools: () -> ExternalTools = ExternalToolChecker::checkAll,
+) : ViewModel() {
 
-    private val viewModelStateFlow = MutableStateFlow(ImagePrepViewModelState())
+    private val viewModelStateFlow = MutableStateFlow(
+        ImagePrepViewModelState(
+            options = settings.loadOptions(),
+            customOutputDir = settings.loadCustomOutputDir(),
+            recentFolders = settings.loadRecentFolders(),
+        ),
+    )
 
     val uiStateFlow: StateFlow<ImagePrepUiState> =
-        MutableStateFlow(ImagePrepUiState()).also { uiStateFlow ->
+        MutableStateFlow(viewModelStateFlow.value.toUiState()).also { uiStateFlow ->
             viewModelScope.launch {
                 viewModelStateFlow.collect { viewModelState ->
                     uiStateFlow.value = viewModelState.toUiState()
@@ -29,124 +67,448 @@ class ImagePrepViewModel : ViewModel() {
             }
         }.asStateFlow()
 
+    private val messageChannel = Channel<String>(Channel.BUFFERED)
+
+    /** スナックバーで一度だけ表示するメッセージ */
+    val messages: Flow<String> = messageChannel.receiveAsFlow()
+
+    private var exportJob: Job? = null
+    private val previewCache = Collections.synchronizedMap(
+        object : LinkedHashMap<String, PreviewSource>(8, 0.75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, PreviewSource>?) = size > 4
+        },
+    )
+
     init {
-        refreshToolCheck()
+        refreshTools()
+        observePreview()
+        viewModelScope.launch {
+            viewModelStateFlow.map { it.options }.distinctUntilChanged().drop(1).collect(settings::saveOptions)
+        }
     }
 
     private fun mutate(transform: (ImagePrepViewModelState) -> ImagePrepViewModelState) {
-        viewModelStateFlow.value = transform(viewModelStateFlow.value)
+        viewModelStateFlow.update(transform)
     }
 
-    fun goToStep(step: WorkflowStep) {
-        when (step) {
-            WorkflowStep.Edit -> {
-                val state = viewModelStateFlow.value
-                if (state.rootDirectory == null) {
-                    mutate { it.copy(statusMessage = "先に対象フォルダを選んでください") }
-                    return
-                }
-                if (state.images.none { it.selected }) {
-                    mutate { it.copy(statusMessage = "処理する画像を1枚以上選択してください") }
-                    return
-                }
+    // region 画像の読み込み
+
+    fun openFolder(dir: File) {
+        viewModelScope.launch {
+            mutate { it.copy(isLoading = true) }
+            val files = withContext(Dispatchers.IO) { listImages(dir) }
+            mutate { it.copy(isLoading = false) }
+            if (files.isEmpty()) {
+                messageChannel.send("「${dir.name}」に読み込める画像がありません")
+                return@launch
             }
-            WorkflowStep.Select -> Unit
+            mutate {
+                it.copy(
+                    images = files.map(::ImageItem),
+                    sourceFolder = dir,
+                    focusedFile = files.first(),
+                )
+            }
+            rememberRecent(dir)
         }
-        mutate { it.copy(currentStep = step) }
     }
 
-    fun chooseRootDirectory(dir: File) {
-        mutate {
-            it.copy(
-                rootDirectory = dir,
-                outputDirectory = File(dir, "output"),
-                statusMessage = "フォルダ: ${dir.absolutePath}",
-            )
+    /** ドロップやファイル選択で追加する。フォルダが含まれていれば中の画像を追加する */
+    fun addFiles(files: List<File>) {
+        if (files.size == 1 && files.single().isDirectory && viewModelStateFlow.value.images.isEmpty()) {
+            openFolder(files.single())
+            return
         }
-        reloadImages()
+        viewModelScope.launch {
+            val expanded = withContext(Dispatchers.IO) {
+                files.flatMap { if (it.isDirectory) listImages(it) else listOf(it) }
+            }
+            val supported = expanded.filter { it.isFile && ImageLoader.isSupported(it) }
+            val ignored = expanded.size - supported.size
+            val existing = viewModelStateFlow.value.images.map { it.file.absoluteFile }.toSet()
+            val added = supported.map { it.absoluteFile }.distinct().filter { it !in existing }
+            mutate { state ->
+                state.copy(
+                    images = state.images + added.map(::ImageItem),
+                    sourceFolder = if (state.images.isEmpty()) null else state.sourceFolder,
+                    focusedFile = state.focusedFile ?: added.firstOrNull(),
+                )
+            }
+            val message = buildList {
+                if (added.isNotEmpty()) add("${added.size} 枚を追加しました")
+                if (supported.size > added.size) add("${supported.size - added.size} 枚は追加済みです")
+                if (ignored > 0) add("非対応の ${ignored} 件を除外しました")
+            }.ifEmpty { listOf("追加できる画像がありません") }
+            messageChannel.send(message.joinToString("・"))
+        }
     }
 
-    fun reloadImages() {
-        val dir = viewModelStateFlow.value.rootDirectory ?: return
-        val supported = setOf("jpg", "jpeg", "png", "webp", "heic", "heif", "gif", "bmp")
-        val loaded = dir.listFiles()
-            ?.filter { file -> file.isFile && file.extension.lowercase() in supported }
-            ?.sortedBy { file -> file.name.lowercase() }
-            ?.map { file -> ImageSelection(file, selected = true) }
-            .orEmpty()
-        mutate { it.copy(images = loaded) }
+    fun closeAll() {
+        if (exportJob?.isActive == true) return
+        mutate { it.copy(images = emptyList(), sourceFolder = null, focusedFile = null, export = ExportState.Idle) }
     }
 
-    fun toggleImage(index: Int, selected: Boolean) {
+    fun removeImage(file: File) {
         mutate { state ->
-            state.copy(
-                images = state.images.toMutableList().also { list ->
-                    list[index] = list[index].copy(selected = selected)
-                },
-            )
+            val index = state.images.indexOfFirst { it.file == file }
+            if (index < 0) return@mutate state
+            val images = state.images.filterIndexed { i, _ -> i != index }
+            val focused = if (state.focusedFile == file) {
+                images.getOrNull(index.coerceAtMost(images.lastIndex))?.file
+            } else {
+                state.focusedFile
+            }
+            state.copy(images = images, focusedFile = focused, sourceFolder = if (images.isEmpty()) null else state.sourceFolder)
         }
     }
 
-    fun selectAll(selected: Boolean) {
-        mutate { state -> state.copy(images = state.images.map { it.copy(selected = selected) }) }
+    fun forgetRecent(dir: File) {
+        mutate { it.copy(recentFolders = it.recentFolders - dir) }
+        settings.saveRecentFolders(viewModelStateFlow.value.recentFolders)
     }
 
-    fun updateEditOptions(transform: (EditOptions) -> EditOptions) {
-        mutate { state -> state.copy(editOptions = transform(state.editOptions)) }
+    private fun rememberRecent(dir: File) {
+        mutate { state -> state.copy(recentFolders = (listOf(dir) + state.recentFolders.filter { it != dir }).take(6)) }
+        settings.saveRecentFolders(viewModelStateFlow.value.recentFolders)
+    }
+
+    private fun listImages(dir: File): List<File> =
+        dir.listFiles()
+            ?.filter { it.isFile && !it.isHidden && ImageLoader.isSupported(it) }
+            ?.sortedWith(NaturalOrder)
+            .orEmpty()
+
+    // endregion
+
+    // region 選択とフォーカス
+
+    fun focus(file: File) {
+        mutate { it.copy(focusedFile = file) }
+    }
+
+    fun moveFocus(delta: Int) {
+        mutate { state ->
+            if (state.images.isEmpty()) return@mutate state
+            val current = state.images.indexOfFirst { it.file == state.focusedFile }.coerceAtLeast(0)
+            val next = (current + delta).coerceIn(0, state.images.lastIndex)
+            state.copy(focusedFile = state.images[next].file)
+        }
+    }
+
+    fun toggleIncluded(file: File) {
+        mutate { state ->
+            state.copy(images = state.images.map { if (it.file == file) it.copy(included = !it.included) else it })
+        }
+    }
+
+    fun toggleFocusedIncluded() {
+        viewModelStateFlow.value.focusedFile?.let(::toggleIncluded)
+    }
+
+    fun setAllIncluded(included: Boolean) {
+        mutate { state -> state.copy(images = state.images.map { it.copy(included = included) }) }
+    }
+
+    fun excludeUnreadable() {
+        mutate { state ->
+            val tools = state.tools ?: return@mutate state
+            state.copy(images = state.images.map { if (!state.canRead(it.file, tools)) it.copy(included = false) else it })
+        }
+    }
+
+    // endregion
+
+    // region 設定
+
+    fun updateOptions(transform: (EditOptions) -> EditOptions) {
+        mutate { it.copy(options = transform(it.options)) }
     }
 
     fun chooseOutputDirectory(dir: File) {
-        mutate { it.copy(outputDirectory = dir) }
+        mutate { it.copy(customOutputDir = dir) }
+        settings.saveCustomOutputDir(dir)
     }
 
-    fun refreshToolCheck() {
-        val toolStatuses = ExternalToolChecker.checkAll()
-        val missing = toolStatuses.filter { !it.available }.joinToString { tool -> tool.name }
-        val statusMessage = if (missing.isBlank()) {
-            "外部ツール確認 OK"
-        } else {
-            "未検出: $missing （WebP/HEIF 変換時に必要）"
-        }
-        mutate {
-            it.copy(
-                toolStatuses = toolStatuses,
-                toolsChecked = true,
-                statusMessage = statusMessage,
-            )
-        }
+    fun resetOutputDirectory() {
+        mutate { it.copy(customOutputDir = null) }
+        settings.saveCustomOutputDir(null)
     }
 
-    fun runProcessing() {
-        val state = viewModelStateFlow.value
-        val out = state.outputDirectory
-        val sources = state.images.filter { it.selected }.map { it.file }
-        if (out == null) {
-            mutate { it.copy(statusMessage = "出力先を指定してください") }
-            return
-        }
-        if (sources.isEmpty()) {
-            mutate { it.copy(statusMessage = "画像が選択されていません") }
-            return
-        }
-        mutate { it.copy(isProcessing = true, processLog = emptyList()) }
+    fun refreshTools() {
         viewModelScope.launch {
-            val results = withContext(Dispatchers.IO) {
-                ImageProcessor().processBatch(sources, out, state.editOptions) { done, total, result ->
-                    mutate { vm ->
-                        vm.copy(
-                            processLog = vm.processLog + result,
-                            statusMessage = "処理中 $done / $total",
-                        )
+            val tools = withContext(Dispatchers.IO) { checkTools() }
+            previewCache.clear()
+            mutate { it.copy(tools = tools) }
+        }
+    }
+
+    // endregion
+
+    // region 書き出し
+
+    fun requestExport() {
+        val state = viewModelStateFlow.value
+        val ui = state.toUiState()
+        if (!ui.canExport) return
+        val outputDir = ui.outputDirectory ?: return
+        viewModelScope.launch {
+            val plan = withContext(Dispatchers.IO) {
+                OutputPlanner.plan(state.images.filter { it.included }.map { it.file }, outputDir, state.options)
+            }
+            if (plan.any { it.exists }) {
+                mutate { it.copy(export = ExportState.ConfirmConflicts(plan)) }
+            } else {
+                startExport(plan, outputDir)
+            }
+        }
+    }
+
+    fun resolveConflicts(policy: ConflictPolicy?) {
+        val confirm = viewModelStateFlow.value.export as? ExportState.ConfirmConflicts ?: return
+        if (policy == null) {
+            mutate { it.copy(export = ExportState.Idle) }
+            return
+        }
+        val outputDir = confirm.plan.first().target.parentFile
+        startExport(OutputPlanner.applyPolicy(confirm.plan, policy), outputDir)
+    }
+
+    fun cancelExport() {
+        val running = viewModelStateFlow.value.export as? ExportState.Running ?: return
+        mutate { it.copy(export = running.copy(cancelling = true)) }
+        exportJob?.cancel()
+    }
+
+    fun dismissExport() {
+        if (viewModelStateFlow.value.export is ExportState.Running) return
+        mutate { it.copy(export = ExportState.Idle) }
+    }
+
+    private fun startExport(plan: List<PlannedOutput>, outputDir: File) {
+        val state = viewModelStateFlow.value
+        val options = state.options
+        val processor = ImageProcessor(state.tools ?: ExternalTools.None)
+        val results = Collections.synchronizedList(mutableListOf<ProcessResult>())
+        mutate { it.copy(export = ExportState.Running(0, plan.size, plan.firstOrNull()?.source?.name)) }
+
+        exportJob = viewModelScope.launch {
+            var cancelled = false
+            try {
+                withContext(Dispatchers.IO) {
+                    outputDir.mkdirs()
+                    val parallelism = (Runtime.getRuntime().availableProcessors() / 2).coerceIn(1, 3)
+                    val semaphore = Semaphore(parallelism)
+                    coroutineScope {
+                        plan.map { item ->
+                            async {
+                                semaphore.withPermit {
+                                    ensureActive()
+                                    mutate { vm ->
+                                        val running = vm.export as? ExportState.Running ?: return@mutate vm
+                                        vm.copy(export = running.copy(currentName = item.source.name))
+                                    }
+                                    val result = processor.export(item, options)
+                                    results += result
+                                    mutate { vm ->
+                                        val running = vm.export as? ExportState.Running ?: return@mutate vm
+                                        vm.copy(export = running.copy(done = results.size))
+                                    }
+                                }
+                            }
+                        }.awaitAll()
                     }
                 }
+            } catch (e: CancellationException) {
+                cancelled = true
             }
-            val ok = results.count(ProcessResult::success)
+            val ordered = synchronized(results) { results.sortedBy { r -> plan.indexOfFirst { it.source == r.source } } }
+            mutate {
+                it.copy(export = ExportState.Finished(ordered, outputDir, cancelled = cancelled, total = plan.size))
+            }
+        }
+    }
+
+    // endregion
+
+    // region プレビュー
+
+    private class PreviewSource(val loaded: LoadedImage, val exifCaption: String?)
+
+    private fun observePreview() {
+        viewModelScope.launch {
+            viewModelStateFlow
+                .map { state ->
+                    val file = state.focusedFile
+                    // HEIC はツール確認後に読み直す必要がある
+                    PreviewKey(file, if (file != null && ImageLoader.isHeif(file)) state.tools else null)
+                }
+                .distinctUntilChanged()
+                .collectLatestSafe { key -> renderPreview(key) }
+        }
+    }
+
+    private data class PreviewKey(val file: File?, val tools: ExternalTools?)
+
+    private suspend fun renderPreview(key: PreviewKey) {
+        val file = key.file
+        if (file == null) {
+            mutate { it.copy(preview = PreviewState()) }
+            return
+        }
+        mutate { it.copy(preview = PreviewState(file = file, loading = true)) }
+        val tools = key.tools ?: viewModelStateFlow.value.tools ?: ExternalTools.None
+        val cacheKey = "${file.absolutePath}:${file.lastModified()}"
+        val source = previewCache[cacheKey] ?: try {
+            withContext(Dispatchers.IO) {
+                PreviewSource(ImageLoader.load(file, tools, maxDimension = PREVIEW_MAX), ExifService.buildCaption(file))
+            }.also { previewCache[cacheKey] = it }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            mutate { it.copy(preview = PreviewState(file = file, error = e.message ?: "読み込めません")) }
+            return
+        }
+        val original = withContext(Dispatchers.Default) { source.loaded.image.toComposeImageBitmap() }
+        mutate {
+            it.copy(
+                preview = it.preview.copy(
+                    original = original,
+                    originalSize = source.loaded.size,
+                    exifCaption = source.exifCaption,
+                ),
+            )
+        }
+
+        viewModelStateFlow.map { it.options }.distinctUntilChanged().collectLatestSafe { options ->
+            mutate { it.copy(preview = it.preview.copy(loading = true)) }
+            delay(80)
+            val outputSize = Resizer.targetSize(source.loaded.size, options)
+            val image = source.loaded.image
+            val renderSize = Resizer.fitWithin(outputSize, image.width, image.height)
+            val processor = ImageProcessor(tools)
+            val caption = if (!options.captionEnabled) {
+                null
+            } else if (options.captionSource == CaptionSource.Exif) {
+                source.exifCaption
+            } else {
+                processor.caption(file, options)
+            }
+            val bitmap = withContext(Dispatchers.Default) {
+                processor.render(image, caption, options, renderSize).toComposeImageBitmap()
+            }
             mutate {
                 it.copy(
-                    isProcessing = false,
-                    statusMessage = "完了: 成功 $ok / ${results.size} → ${out.absolutePath}",
+                    preview = it.preview.copy(
+                        processed = bitmap,
+                        outputSize = outputSize,
+                        outputFormat = OutputPlanner.resolveFormat(file, options.outputFormat),
+                        loading = false,
+                    ),
                 )
             }
         }
+    }
+
+    // endregion
+
+    override fun onCleared() {
+        exportJob?.cancel()
+        super.onCleared()
+    }
+
+    companion object {
+        private const val PREVIEW_MAX = 2000
+    }
+}
+
+private suspend fun <T> Flow<T>.collectLatestSafe(action: suspend (T) -> Unit) {
+    collectLatest { value ->
+        try {
+            action(value)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            e.printStackTrace()
+        }
+    }
+}
+
+internal data class ImagePrepViewModelState(
+    val images: List<ImageItem> = emptyList(),
+    val sourceFolder: File? = null,
+    val focusedFile: File? = null,
+    val options: EditOptions = EditOptions(),
+    val customOutputDir: File? = null,
+    val tools: ExternalTools? = null,
+    val recentFolders: List<File> = emptyList(),
+    val preview: PreviewState = PreviewState(),
+    val export: ExportState = ExportState.Idle,
+    val isLoading: Boolean = false,
+) {
+    val defaultOutputDir: File?
+        get() = (sourceFolder ?: images.firstOrNull()?.file?.absoluteFile?.parentFile)?.let { File(it, "output") }
+
+    fun canRead(file: File, tools: ExternalTools): Boolean = !ImageLoader.isHeif(file) || tools.heifDecoder != null
+}
+
+internal fun ImagePrepViewModelState.toUiState(): ImagePrepUiState {
+    val included = images.filter { it.included }
+    val outputDir = customOutputDir ?: defaultOutputDir
+    val notices = buildList {
+        val tools = tools
+        if (tools != null) {
+            val needsWebp = included.any { OutputPlanner.resolveFormat(it.file, options.outputFormat) == OutputFormat.Webp }
+            if (needsWebp && !tools.canWriteWebp) {
+                add(Notice("WebP で書き出すには cwebp が必要です。形式を変更するか、cwebp をインストールしてください。", blocking = true, action = NoticeAction.ShowTools))
+            }
+            val unreadable = included.count { !canRead(it.file, tools) }
+            if (unreadable > 0) {
+                add(Notice("HEIC の ${unreadable} 枚は heif-dec / magick が無いため読み込めません。", blocking = true, action = NoticeAction.ExcludeUnreadable))
+            }
+        }
+        if (outputDir != null && options.fileNameSuffix.isBlank() &&
+            included.any { it.file.absoluteFile.parentFile?.normalize() == outputDir.absoluteFile.normalize() }
+        ) {
+            add(Notice("出力先が元画像と同じフォルダです。元画像は上書きされず「(2)」付きの名前で保存されます。接尾辞の設定がおすすめです。", blocking = false))
+        }
+    }
+    val folder = sourceFolder
+    return ImagePrepUiState(
+        images = images,
+        includedCount = included.size,
+        focusedFile = focusedFile,
+        sourceTitle = folder?.name?.ifEmpty { folder.path } ?: if (images.isEmpty()) null else "追加した画像",
+        sourcePath = folder?.absolutePath,
+        options = options,
+        outputDirectory = outputDir,
+        isCustomOutputDirectory = customOutputDir != null,
+        tools = tools,
+        recentFolders = recentFolders,
+        preview = preview,
+        export = export,
+        notices = notices,
+        isLoading = isLoading,
+    )
+}
+
+/** "IMG_2.jpg" が "IMG_10.jpg" より前に来る並び順 */
+internal object NaturalOrder : Comparator<File> {
+    private val chunk = Regex("""\d+|\D+""")
+
+    override fun compare(a: File, b: File): Int {
+        val x = chunk.findAll(a.name.lowercase()).map { it.value }.toList()
+        val y = chunk.findAll(b.name.lowercase()).map { it.value }.toList()
+        for (i in 0 until minOf(x.size, y.size)) {
+            val p = x[i]
+            val q = y[i]
+            val result = if (p[0].isDigit() && q[0].isDigit()) {
+                p.trimStart('0').length.compareTo(q.trimStart('0').length).takeIf { it != 0 }
+                    ?: p.trimStart('0').compareTo(q.trimStart('0'))
+            } else {
+                p.compareTo(q)
+            }
+            if (result != 0) return result
+        }
+        return x.size.compareTo(y.size)
     }
 }

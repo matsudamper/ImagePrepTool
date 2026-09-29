@@ -1,0 +1,141 @@
+package com.imagepreptool.service
+
+import com.imagepreptool.model.CaptionStyle
+import com.imagepreptool.model.ConflictPolicy
+import com.imagepreptool.model.EditOptions
+import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.model.ImageSize
+import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.ProcessResult
+import com.imagepreptool.model.ResizeMode
+import java.awt.image.BufferedImage
+import java.io.File
+import java.nio.file.Files
+import javax.imageio.ImageIO
+import kotlin.test.AfterTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertTrue
+
+class ImageProcessingTest {
+
+    private val dir: File = Files.createTempDirectory("imageprep-test").toFile()
+
+    @AfterTest
+    fun cleanup() {
+        dir.deleteRecursively()
+    }
+
+    @Test
+    fun targetSizeNeverUpscales() {
+        val options = EditOptions(resizeMode = ResizeMode.LongEdge, longEdge = 2048)
+        assertEquals(ImageSize(2048, 1536), Resizer.targetSize(ImageSize(4032, 3024), options))
+        assertEquals(ImageSize(1536, 2048), Resizer.targetSize(ImageSize(3024, 4032), options))
+        assertEquals(ImageSize(800, 600), Resizer.targetSize(ImageSize(800, 600), options))
+        val fit = EditOptions(resizeMode = ResizeMode.Fit, fitWidth = 1920, fitHeight = 1080)
+        assertEquals(ImageSize(1440, 1080), Resizer.targetSize(ImageSize(4032, 3024), fit))
+        assertEquals(ImageSize(4032, 3024), Resizer.targetSize(ImageSize(4032, 3024), EditOptions(resizeMode = ResizeMode.None)))
+    }
+
+    @Test
+    fun orientationRotatesPixels() {
+        // 2x1: 左が赤、右が青
+        val image = BufferedImage(2, 1, BufferedImage.TYPE_INT_RGB)
+        image.setRGB(0, 0, 0xFF0000)
+        image.setRGB(1, 0, 0x0000FF)
+        val cw = ImageLoader.applyOrientation(image, 6)
+        assertEquals(1, cw.width)
+        assertEquals(2, cw.height)
+        assertEquals(0xFF0000, cw.getRGB(0, 0) and 0xFFFFFF)
+        assertEquals(0x0000FF, cw.getRGB(0, 1) and 0xFFFFFF)
+        val ccw = ImageLoader.applyOrientation(image, 8)
+        assertEquals(0x0000FF, ccw.getRGB(0, 0) and 0xFFFFFF)
+        val flipped = ImageLoader.applyOrientation(image, 2)
+        assertEquals(0x0000FF, flipped.getRGB(0, 0) and 0xFFFFFF)
+        for (o in 1..8) {
+            val out = ImageLoader.applyOrientation(image, o)
+            val colors = setOf(out.getRGB(0, 0) and 0xFFFFFF, out.getRGB(out.width - 1, out.height - 1) and 0xFFFFFF)
+            assertEquals(setOf(0xFF0000, 0x0000FF), colors, "orientation $o")
+        }
+    }
+
+    @Test
+    fun exposureAndApertureFormatting() {
+        assertEquals("1/250s", ExifService.formatExposure(0.004))
+        assertEquals("2s", ExifService.formatExposure(2.0))
+        assertEquals("0.5s", ExifService.formatExposure(0.5))
+        assertEquals("2.8", ExifService.formatDecimal(2.8))
+        assertEquals("8", ExifService.formatDecimal(8.0))
+    }
+
+    @Test
+    fun planKeepsOriginalsSafeAndAvoidsBatchCollisions() {
+        val a = writeImage("photo.jpg")
+        val b = writeImage("photo.png")
+        val plan = OutputPlanner.plan(listOf(a, b), dir, EditOptions(outputFormat = OutputFormat.Jpeg))
+        // 同じフォルダ・接尾辞なし → 元画像は上書きしない
+        assertNotEquals(a.absoluteFile, plan[0].target)
+        assertNotEquals(plan[0].target, plan[1].target)
+        assertTrue(plan.none { it.target.exists() })
+    }
+
+    @Test
+    fun conflictPolicies() {
+        val src = writeImage("a.png")
+        val out = File(dir, "out").apply { mkdirs() }
+        File(out, "a.jpg").writeText("existing")
+        val plan = OutputPlanner.plan(listOf(src), out, EditOptions(outputFormat = OutputFormat.Jpeg))
+        assertTrue(plan.single().exists)
+        assertEquals("a (2).jpg", OutputPlanner.applyPolicy(plan, ConflictPolicy.Rename).single().target.name)
+        assertTrue(OutputPlanner.applyPolicy(plan, ConflictPolicy.Skip).single().skip)
+        assertEquals("a.jpg", OutputPlanner.applyPolicy(plan, ConflictPolicy.Overwrite).single().target.name)
+    }
+
+    @Test
+    fun exportsTransparentPngAsJpegWithCaption() {
+        val src = File(dir, "alpha.png")
+        ImageIO.write(BufferedImage(1200, 800, BufferedImage.TYPE_INT_ARGB), "png", src)
+        val options = EditOptions(
+            resizeMode = ResizeMode.LongEdge,
+            longEdge = 600,
+            outputFormat = OutputFormat.Jpeg,
+            captionEnabled = true,
+            captionSource = com.imagepreptool.model.CaptionSource.Custom,
+            customCaption = "テスト caption",
+            captionStyle = CaptionStyle.Shadow,
+        )
+        val out = File(dir, "out")
+        val item = OutputPlanner.plan(listOf(src), out, options.copy(fileNameSuffix = "_web")).single()
+        val result = ImageProcessor(ExternalTools.None).export(item, options)
+        assertEquals(ProcessResult.Status.Success, result.status, result.message)
+        val written = ImageIO.read(File(out, "alpha_web.jpg"))
+        assertEquals(600, written.width)
+        assertEquals(400, written.height)
+        assertFalse(out.listFiles().orEmpty().any { it.name.endsWith(".tmp") })
+    }
+
+    @Test
+    fun renderDoesNotMutateSource() {
+        val src = BufferedImage(100, 100, BufferedImage.TYPE_INT_RGB)
+        val out = ImageProcessor(ExternalTools.None).render(src, "abc", EditOptions(), ImageSize(100, 100))
+        assertNotEquals(src, out)
+        assertTrue((0 until 100).all { x -> (0 until 100).all { y -> src.getRGB(x, y) and 0xFFFFFF == 0 } })
+    }
+
+    @Test
+    fun webpFailsClearlyWithoutCwebp() {
+        val src = writeImage("x.png")
+        val item = OutputPlanner.plan(listOf(src), File(dir, "o"), EditOptions(outputFormat = OutputFormat.Webp)).single()
+        val result = ImageProcessor(ExternalTools.None).export(item, EditOptions(outputFormat = OutputFormat.Webp))
+        assertEquals(ProcessResult.Status.Failed, result.status)
+        assertTrue("cwebp" in result.message)
+    }
+
+    private fun writeImage(name: String): File {
+        val file = File(dir, name)
+        ImageIO.write(BufferedImage(64, 48, BufferedImage.TYPE_INT_RGB), file.extension.replace("jpg", "jpeg"), file)
+        return file
+    }
+}
