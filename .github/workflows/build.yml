@@ -72,6 +72,16 @@ jobs:
       - name: Package installer EXE
         run: .\gradlew.bat :app:packageReleaseExe --no-daemon
 
+      - name: Print jpackage logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          for f in app/build/compose/logs/packageReleaseExe/*.txt; do
+            echo "::group::${f}"
+            cat "${f}"
+            echo "::endgroup::"
+          done
+
       - name: Rename installer EXE with branch and short hash
         id: name
         shell: bash
