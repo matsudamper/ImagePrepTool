@@ -1,9 +1,9 @@
 package com.imagepreptool.service
 
+import java.io.File
 import com.drew.imaging.ImageMetadataReader
 import com.drew.metadata.exif.ExifIFD0Directory
 import com.drew.metadata.exif.ExifSubIFDDirectory
-import java.io.File
 
 object ExifService {
 

@@ -1,9 +1,5 @@
 package com.imagepreptool.service
 
-import com.imagepreptool.model.EditOptions
-import com.imagepreptool.model.ExifTextPosition
-import com.imagepreptool.model.OutputFormat
-import com.imagepreptool.model.ProcessResult
 import java.awt.AlphaComposite
 import java.awt.Color
 import java.awt.Font
@@ -15,6 +11,10 @@ import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 import kotlin.math.roundToInt
+import com.imagepreptool.model.EditOptions
+import com.imagepreptool.model.ExifTextPosition
+import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.ProcessResult
 
 class ImageProcessor {
 
@@ -214,7 +214,9 @@ class ImageProcessor {
         fontSize: Int,
         margin: Int,
     ): BufferedImage {
-        val rgbImage = if (image.type == BufferedImage.TYPE_INT_RGB) image else {
+        val rgbImage = if (image.type == BufferedImage.TYPE_INT_RGB) {
+            image
+        } else {
             val converted = BufferedImage(image.width, image.height, BufferedImage.TYPE_INT_RGB)
             val gConvert = converted.createGraphics()
             gConvert.drawImage(image, 0, 0, null)

@@ -2,12 +2,6 @@ package com.imagepreptool.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.imagepreptool.model.EditOptions
-import com.imagepreptool.model.ImageSelection
-import com.imagepreptool.model.ProcessResult
-import com.imagepreptool.model.WorkflowStep
-import com.imagepreptool.service.ExternalToolChecker
-import com.imagepreptool.service.ImageProcessor
 import java.io.File
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +9,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import com.imagepreptool.model.EditOptions
+import com.imagepreptool.model.ImageSelection
+import com.imagepreptool.model.ProcessResult
+import com.imagepreptool.model.WorkflowStep
+import com.imagepreptool.service.ExternalToolChecker
+import com.imagepreptool.service.ImageProcessor
 
 class ImagePrepViewModel : ViewModel() {
 
