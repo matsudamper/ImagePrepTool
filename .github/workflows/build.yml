@@ -25,6 +25,9 @@ jobs:
       - name: ktlint
         run: ./gradlew ktlintCheck --continue --no-daemon
 
+      - name: detekt
+        run: ./gradlew detekt --continue --no-daemon
+
   build-linux:
     runs-on: ubuntu-latest
     steps:
