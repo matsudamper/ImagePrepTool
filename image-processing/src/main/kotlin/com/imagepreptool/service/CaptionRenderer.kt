@@ -64,13 +64,6 @@ object CaptionRenderer {
             lines.forEachIndexed { index, line ->
                 val baseline = top + padV + metrics.ascent + lineHeight * index
                 val x = if (alignRight) left + padH + textWidth - metrics.stringWidth(line) else left + padH
-                if (!plate) {
-                    val offset = max(1f, fontPx * 0.06f)
-                    g.color = Color(0, 0, 0, 90)
-                    g.drawString(line, x + offset * 1.6f, baseline + offset * 1.6f)
-                    g.color = Color(0, 0, 0, 170)
-                    g.drawString(line, x + offset, baseline + offset)
-                }
                 g.color = Color(255, 255, 255, 240)
                 g.drawString(line, x, baseline)
             }
