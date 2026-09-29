@@ -17,6 +17,9 @@ data class PlannedOutput(
 
 object OutputPlanner {
 
+    private const val MAX_NAME_BYTES = 255
+    private const val RENAME_MARGIN_BYTES = 12
+
     fun resolveFormat(source: File, selected: OutputFormat): OutputFormat {
         if (selected != OutputFormat.Original) return selected
         return when (source.extension.lowercase()) {
@@ -33,7 +36,21 @@ object OutputPlanner {
             format == OutputFormat.Jpeg && sourceExt in setOf("jpg", "jpeg") -> sourceExt
             else -> format.extension
         }
-        return "${source.nameWithoutExtension}${sanitize(suffix)}.$ext"
+        val tail = "${sanitize(suffix)}.$ext"
+        return fitNameLength(source.nameWithoutExtension, tail)
+    }
+
+    /**
+     * 多くのファイルシステムはファイル名を 255 バイトまでしか許さないため、元の名前を削って収める。
+     * 重複時に付ける「 (2)」などの分の余裕を残す
+     */
+    private fun fitNameLength(base: String, tail: String): String {
+        val limit = MAX_NAME_BYTES - RENAME_MARGIN_BYTES
+        var trimmed = base
+        while (trimmed.isNotEmpty() && (trimmed + tail).toByteArray(Charsets.UTF_8).size > limit) {
+            trimmed = trimmed.dropLast(1)
+        }
+        return trimmed + tail
     }
 
     /**

@@ -32,7 +32,8 @@ class ImageProcessor(private val tools: ExternalTools) {
             val loaded = ImageLoader.load(item.source, tools)
             val target = Resizer.targetSize(loaded.size, options)
             val rendered = render(loaded.image, caption(item.source, options), options, target)
-            ImageEncoder.write(rendered, item.format, options.quality, item.target, tools)
+            // 同名確認で「上書き」が選ばれた項目だけ既存ファイルを置き換える
+            ImageEncoder.write(rendered, item.format, options.quality, item.target, tools, replaceExisting = item.exists)
             ProcessResult(item.source, item.target, ProcessResult.Status.Success, "$target · ${item.format.label}")
         } catch (e: OutOfMemoryError) {
             ProcessResult(item.source, null, ProcessResult.Status.Failed, "メモリが不足しました")

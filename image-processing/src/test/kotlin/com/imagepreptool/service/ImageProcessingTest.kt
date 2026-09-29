@@ -215,6 +215,26 @@ class ImageProcessingTest {
     }
 
     @Test
+    fun longNameWithSuffixIsShortened() {
+        val name = OutputPlanner.outputName(File("${"あ".repeat(80)}.jpg"), OutputFormat.Jpeg, "_" + "x".repeat(39))
+        assertTrue(name.toByteArray(Charsets.UTF_8).size <= 255 - 12, name)
+        assertTrue(name.endsWith("_" + "x".repeat(39) + ".jpg"))
+    }
+
+    @Test
+    fun doesNotReplaceFileCreatedDuringExport() {
+        val src = writeImage("c.png")
+        val out = File(dir, "o2")
+        val item = OutputPlanner.plan(listOf(src), out, EditOptions(outputFormat = OutputFormat.Png)).single()
+        // 計画後に別のアプリが同じ名前のファイルを作った状況
+        out.mkdirs()
+        item.target.writeText("other")
+        val result = ImageProcessor(ExternalTools.None).export(item, EditOptions(outputFormat = OutputFormat.Png))
+        assertEquals(ProcessResult.Status.Failed, result.status)
+        assertEquals("other", item.target.readText())
+    }
+
+    @Test
     fun renderDoesNotMutateSource() {
         val src = BufferedImage(100, 100, BufferedImage.TYPE_INT_RGB)
         val out = ImageProcessor(ExternalTools.None).render(src, "abc", EditOptions(), ImageSize(100, 100))
