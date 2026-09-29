@@ -48,7 +48,8 @@ object OutputPlanner {
         val limit = MAX_NAME_BYTES - RENAME_MARGIN_BYTES
         var trimmed = base
         while (trimmed.isNotEmpty() && (trimmed + tail).toByteArray(Charsets.UTF_8).size > limit) {
-            trimmed = trimmed.dropLast(1)
+            // サロゲートペア（絵文字など）を途中で切らないよう、コードポイント単位で削る
+            trimmed = trimmed.substring(0, trimmed.offsetByCodePoints(trimmed.length, -1))
         }
         return trimmed + tail
     }

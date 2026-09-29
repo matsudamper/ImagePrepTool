@@ -24,12 +24,7 @@ object ExifService {
 
         val make = ifd0?.string(ExifIFD0Directory.TAG_MAKE)
         val model = ifd0?.string(ExifIFD0Directory.TAG_MODEL)
-        val camera = when {
-            model == null -> make
-            make == null || model.startsWith(make, ignoreCase = true) -> model
-            // "NIKON CORPORATION" などは先頭の単語だけ使う
-            else -> "${make.substringBefore(' ')} $model"
-        }
+        val camera = cameraName(make, model)
         fun put(field: CaptionField, value: String?) {
             if (!value.isNullOrBlank()) fields[field] = value
         }
@@ -49,6 +44,14 @@ object ExifService {
         put(CaptionField.Artist, ifd0?.string(ExifIFD0Directory.TAG_ARTIST))
         put(CaptionField.Copyright, ifd0?.string(ExifIFD0Directory.TAG_COPYRIGHT))
         return fields
+    }
+
+    /** メーカー名とモデル名をまとめる。「NIKON CORPORATION」+「NIKON D850」のような重複は省く */
+    internal fun cameraName(make: String?, model: String?): String? {
+        if (model == null) return make
+        if (make == null) return model
+        val makeHead = make.substringBefore(' ')
+        return if (model.startsWith(makeHead, ignoreCase = true)) model else "$makeHead $model"
     }
 
     /** EXIF Orientation（1〜8）。無ければ 1 */

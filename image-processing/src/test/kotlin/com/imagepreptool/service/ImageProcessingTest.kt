@@ -222,6 +222,23 @@ class ImageProcessingTest {
     }
 
     @Test
+    fun longNameWithEmojiIsCutAtCodePointBoundary() {
+        val name = OutputPlanner.outputName(File("${"😀".repeat(60)}.png"), OutputFormat.Png, "_web")
+        val loneHighSurrogate = name.indices.any { i -> name[i].isHighSurrogate() && name.getOrNull(i + 1)?.isLowSurrogate() != true }
+        assertFalse(loneHighSurrogate, name)
+        assertTrue(name.endsWith("_web.png"))
+    }
+
+    @Test
+    fun cameraNameAvoidsDuplicatedMaker() {
+        assertEquals("NIKON D850", ExifService.cameraName("NIKON CORPORATION", "NIKON D850"))
+        assertEquals("Canon EOS R5", ExifService.cameraName("Canon", "Canon EOS R5"))
+        assertEquals("SONY ILCE-7M4", ExifService.cameraName("SONY", "ILCE-7M4"))
+        assertEquals("FUJIFILM X-T5", ExifService.cameraName("FUJIFILM", "X-T5"))
+        assertEquals("X-T5", ExifService.cameraName(null, "X-T5"))
+    }
+
+    @Test
     fun doesNotReplaceFileCreatedDuringExport() {
         val src = writeImage("c.png")
         val out = File(dir, "o2")
