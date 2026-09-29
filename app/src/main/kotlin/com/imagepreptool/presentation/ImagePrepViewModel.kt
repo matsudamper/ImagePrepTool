@@ -75,6 +75,7 @@ class ImagePrepViewModel(
     val messages: Flow<String> = messageChannel.receiveAsFlow()
 
     private var exportJob: Job? = null
+    private var loadJob: Job? = null
     private val previewCache = Collections.synchronizedMap(
         object : LinkedHashMap<String, PreviewSource>(8, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, PreviewSource>?) = size > 4
@@ -96,10 +97,15 @@ class ImagePrepViewModel(
     // region 画像の読み込み
 
     fun openFolder(dir: File) {
-        viewModelScope.launch {
+        // 後から開いたフォルダを優先し、前の読み込み結果で上書きしない
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             mutate { it.copy(isLoading = true) }
-            val files = withContext(Dispatchers.IO) { listImages(dir) }
-            mutate { it.copy(isLoading = false) }
+            val files = try {
+                runInterruptible(Dispatchers.IO) { listImages(dir) }
+            } finally {
+                mutate { it.copy(isLoading = false) }
+            }
             if (files.isEmpty()) {
                 messageChannel.send("「${dir.name}」に読み込める画像がありません")
                 return@launch
@@ -123,7 +129,8 @@ class ImagePrepViewModel(
             openFolder(files.single())
             return
         }
-        viewModelScope.launch {
+        loadJob?.cancel()
+        loadJob = viewModelScope.launch {
             val expanded = withContext(Dispatchers.IO) {
                 files.flatMap { if (it.isDirectory) listImages(it) else listOf(it) }
             }
@@ -154,7 +161,10 @@ class ImagePrepViewModel(
     }
 
     override fun closeAll() {
-        if (exportJob?.isActive == true) return
+        // 書き出しの準備中・実行中は閉じない（閉じた画像が書き出されるのを防ぐ）
+        val export = viewModelStateFlow.value.export
+        if (export is ExportState.Preparing || export is ExportState.Running || exportJob?.isActive == true) return
+        loadJob?.cancel()
         mutate { it.copy(images = emptyList(), sourceFolder = null, focusedFile = null, selection = emptySet(), anchor = null, export = ExportState.Idle) }
     }
 
@@ -336,6 +346,8 @@ class ImagePrepViewModel(
                 messageChannel.send("書き出しを開始できません（${e.message ?: e.javaClass.simpleName}）")
                 return@launch
             }
+            // 計画中に閉じられた・取り消された場合は書き出さない
+            if (viewModelStateFlow.value.export != ExportState.Preparing) return@launch
             if (plan.any { it.exists }) {
                 mutate { it.copy(export = ExportState.ConfirmConflicts(plan)) }
             } else {
@@ -441,7 +453,8 @@ class ImagePrepViewModel(
         val tools = key.tools ?: viewModelStateFlow.value.tools ?: ExternalTools.None
         val cacheKey = "${file.absolutePath}:${file.lastModified()}"
         val source = previewCache[cacheKey] ?: try {
-            withContext(Dispatchers.IO) {
+            // 別の画像に切り替えたら HEIC 変換などの外部プロセスも止める
+            runInterruptible(Dispatchers.IO) {
                 PreviewSource(ImageLoader.load(file, tools, maxDimension = PREVIEW_MAX), ExifService.readFields(file))
             }.also { previewCache[cacheKey] = it }
         } catch (e: CancellationException) {

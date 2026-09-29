@@ -49,6 +49,9 @@ class UiStateTest {
         vm.requestExport()
         assertEquals(ExportState.Preparing, vm.snapshotForTest().export)
         assertFalse(vm.snapshotForTest().canExport)
+        // 準備中は閉じられない
+        vm.closeAll()
+        assertEquals(1, vm.snapshotForTest().images.size)
     }
 
     @Test

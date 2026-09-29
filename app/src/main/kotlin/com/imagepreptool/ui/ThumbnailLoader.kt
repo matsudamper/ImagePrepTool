@@ -7,9 +7,8 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import java.io.File
 import java.util.Collections
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.runInterruptible
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.service.ImageLoader
 
@@ -35,10 +34,10 @@ object ThumbnailLoader {
 
     suspend fun load(file: File, tools: ExternalTools): ThumbnailState {
         cache[key(file)]?.let { return it }
-        val state = withContext(dispatcher) {
+        val state = runInterruptible(dispatcher) {
             try {
                 ThumbnailState.Ready(ImageLoader.load(file, tools, maxDimension = SIZE).image.toComposeImageBitmap())
-            } catch (e: CancellationException) {
+            } catch (e: InterruptedException) {
                 throw e
             } catch (e: Throwable) {
                 ThumbnailState.Failed(e.message ?: "読み込めません")
