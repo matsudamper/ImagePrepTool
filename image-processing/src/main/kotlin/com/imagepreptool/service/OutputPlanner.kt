@@ -21,6 +21,9 @@ object OutputPlanner {
     private const val RENAME_MARGIN_UNITS = 12
     private val isWindows = System.getProperty("os.name").orEmpty().lowercase().contains("win")
 
+    // Windows（NTFS）と macOS（APFS の既定）はファイル名の大文字小文字を区別しない
+    private val caseInsensitiveFileNames = isWindows || System.getProperty("os.name").orEmpty().lowercase().contains("mac")
+
     fun resolveFormat(source: File, selected: OutputFormat): OutputFormat {
         if (selected != OutputFormat.Original) return selected
         return when (source.extension.lowercase()) {
@@ -113,8 +116,7 @@ object OutputPlanner {
         }
     }
 
-    // Windows はファイル名の大文字小文字を区別しない
-    private fun File.key(): String = path.lowercase()
+    private fun File.key(): String = if (caseInsensitiveFileNames) path.lowercase() else path
 
     private fun sanitize(suffix: String): String = suffix.replace(Regex("""[\\/:*?"<>|]"""), "_").trimEnd('.', ' ')
 }
