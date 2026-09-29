@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.focusable
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -58,23 +60,29 @@ import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import java.io.File
 import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.presentation.ImageGroup
 import com.imagepreptool.presentation.ImageItem
 import com.imagepreptool.presentation.SelectMode
 import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_broken_image
 import com.imagepreptool.resources.ic_close
+import com.imagepreptool.resources.ic_folder
 import com.imagepreptool.ui.components.Tooltip
+import com.imagepreptool.ui.theme.AppTheme
 import com.imagepreptool.ui.theme.MonoNumberStyle
 import org.jetbrains.compose.resources.painterResource
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ImageListPanel(
-    images: List<ImageItem>,
+    imageGroups: List<ImageGroup>,
     focusedFile: File?,
     selectedFiles: Set<File>,
     isSelectionMode: Boolean,
@@ -87,21 +95,29 @@ fun ImageListPanel(
     onMoveFocus: (Int) -> Unit,
     onRemove: (File) -> Unit,
     onReveal: (File) -> Unit,
+    onOpenFolder: (File) -> Unit,
+    onRemoveFolder: (File) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
     val gridState = rememberLazyGridState()
     val focusRequester = remember { FocusRequester() }
+    val imageCount = imageGroups.sumOf { it.images.size }
+    val density = LocalDensity.current
+    val folderHeaderHeightPx = with(density) { FolderHeaderHeight.roundToPx() }
 
     LaunchedEffect(focusedFile) {
-        val index = images.indexOfFirst { it.file == focusedFile }
-        if (index < 0) return@LaunchedEffect
+        val index = focusedFile?.let { gridIndexOf(imageGroups, it) } ?: return@LaunchedEffect
         val visible = gridState.layoutInfo.visibleItemsInfo
+        // 上端に固定された見出しの下に隠れている画像は見えていない扱いにする
         val fullyVisible = visible.any { it.index == index } &&
             visible.first { it.index == index }.let { item ->
-                item.offset.y >= 0 && item.offset.y + item.size.height <= gridState.layoutInfo.viewportEndOffset
+                item.offset.y >= folderHeaderHeightPx && item.offset.y + item.size.height <= gridState.layoutInfo.viewportEndOffset
             }
-        if (!fullyVisible) gridState.animateScrollToItem(index)
+        if (!fullyVisible) {
+            gridState.animateScrollToItem(index)
+            gridState.animateScrollBy(-folderHeaderHeightPx.toFloat())
+        }
     }
 
     Column(modifier = modifier.fillMaxHeight().background(colors.surface)) {
@@ -118,7 +134,7 @@ fun ImageListPanel(
             ) {
                 Text("画像", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
                 Text(
-                    "${images.size} 枚",
+                    "$imageCount 枚",
                     style = MaterialTheme.typography.labelMedium.merge(MonoNumberStyle),
                     color = colors.onSurfaceVariant,
                 )
@@ -126,10 +142,10 @@ fun ImageListPanel(
         }
 
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = 84.dp),
+            columns = GridCells.Adaptive(minSize = ThumbnailMinSize),
             state = gridState,
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(start = GridHorizontalPadding, end = GridHorizontalPadding, bottom = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(GridColumnSpacing),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             modifier = Modifier
                 .weight(1f)
@@ -144,12 +160,12 @@ fun ImageListPanel(
                 .focusRequester(focusRequester)
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                    val columns = gridState.layoutInfo.visibleItemsInfo.map { it.column }.distinct().size.coerceAtLeast(1)
+                    val columns = density.adaptiveColumnCount(gridState.layoutInfo.viewportSize.width)
                     when (event.key) {
                         Key.DirectionLeft -> onMoveFocus(-1)
                         Key.DirectionRight -> onMoveFocus(1)
-                        Key.DirectionUp -> onMoveFocus(-columns)
-                        Key.DirectionDown -> onMoveFocus(columns)
+                        Key.DirectionUp -> onMoveFocus(verticalMoveDelta(imageGroups, focusedFile, columns, downward = false))
+                        Key.DirectionDown -> onMoveFocus(verticalMoveDelta(imageGroups, focusedFile, columns, downward = true))
                         Key.Delete -> if (isSelectionMode) onRemoveSelection() else focusedFile?.let(onRemove)
                         Key.Escape -> onClearSelection()
                         Key.A -> if (event.isCtrlPressed || event.isMetaPressed) onSelectAll() else return@onPreviewKeyEvent false
@@ -160,30 +176,131 @@ fun ImageListPanel(
                 }
                 .focusable(),
         ) {
-            items(images, key = { it.file.absolutePath }) { item ->
-                // 複数選択中の画像に対する操作は選択中の全画像に反映される
-                val inGroup = isSelectionMode && item.file in selectedFiles
-                val prefix = if (inGroup) "選択中の ${selectedFiles.size} 枚を" else ""
-                ContextMenuArea(
-                    items = {
-                        listOf(
-                            ContextMenuItem("エクスプローラーで表示") { onReveal(item.file) },
-                            ContextMenuItem(prefix + "一覧から削除") { onRemove(item.file) },
-                        )
-                    },
-                ) {
-                    Thumbnail(
-                        item = item,
-                        focused = item.file == focusedFile,
-                        selected = inGroup,
-                        tools = tools,
-                        onClick = { mode ->
-                            focusRequester.requestFocus()
-                            onClickImage(item.file, mode)
+            imageGroups.forEach { group ->
+                stickyHeader(key = "folder:${group.folder.absolutePath}", contentType = "folder") {
+                    FolderHeader(
+                        group = group,
+                        onOpen = { onOpenFolder(group.folder) },
+                        onRemove = { onRemoveFolder(group.folder) },
+                    )
+                }
+                items(group.images, key = { it.file.absolutePath }, contentType = { "image" }) { item ->
+                    // 複数選択中の画像に対する操作は選択中の全画像に反映される
+                    val inGroup = isSelectionMode && item.file in selectedFiles
+                    val prefix = if (inGroup) "選択中の ${selectedFiles.size} 枚を" else ""
+                    ContextMenuArea(
+                        items = {
+                            listOf(
+                                ContextMenuItem("エクスプローラーで表示") { onReveal(item.file) },
+                                ContextMenuItem(prefix + "一覧から削除") { onRemove(item.file) },
+                            )
                         },
+                    ) {
+                        Thumbnail(
+                            item = item,
+                            focused = item.file == focusedFile,
+                            selected = inGroup,
+                            tools = tools,
+                            onClick = { mode ->
+                                focusRequester.requestFocus()
+                                onClickImage(item.file, mode)
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** 見出しを含めたグリッド上の位置。見出しはフォルダごとに 1 つ入る */
+private fun gridIndexOf(imageGroups: List<ImageGroup>, file: File): Int? =
+    imageGroups
+        .flatMap { group -> listOf(group.folder) + group.images.map { it.file } }
+        .indexOf(file)
+        .takeIf { it >= 0 }
+
+/**
+ * 上下キーで移動する枚数。フォルダごとに見出しで行が改まるため、
+ * 隣のフォルダへ移るときは一覧の通し番号ではなく同じ列の画像を移動先にする
+ */
+internal fun verticalMoveDelta(imageGroups: List<ImageGroup>, focusedFile: File?, columns: Int, downward: Boolean): Int {
+    val groupIndex = imageGroups.indexOfFirst { group -> group.images.any { it.file == focusedFile } }.takeIf { it >= 0 } ?: return 0
+    val group = imageGroups[groupIndex]
+    val groupStart = imageGroups.take(groupIndex).sumOf { it.images.size }
+    val indexInGroup = group.images.indexOfFirst { it.file == focusedFile }
+    val column = indexInGroup % columns
+    val row = indexInGroup / columns
+    val lastRow = (group.images.size - 1) / columns
+    val target = when {
+        downward && row < lastRow -> groupStart + minOf(indexInGroup + columns, group.images.lastIndex)
+        downward -> imageGroups.getOrNull(groupIndex + 1)?.let { next ->
+            groupStart + group.images.size + minOf(column, next.images.lastIndex)
+        }
+        row > 0 -> groupStart + indexInGroup - columns
+        else -> imageGroups.getOrNull(groupIndex - 1)?.let { previous ->
+            val previousLastRowStart = previous.images.lastIndex / columns * columns
+            groupStart - previous.images.size + minOf(previousLastRowStart + column, previous.images.lastIndex)
+        }
+    } ?: return 0
+    return target - (groupStart + indexInGroup)
+}
+
+/** GridCells.Adaptive と同じ計算でグリッドの列数を求める。見えている行が短い位置までスクロールしていても正しい列数になる */
+private fun Density.adaptiveColumnCount(viewportWidthPx: Int): Int {
+    val gridWidth = viewportWidthPx - (GridHorizontalPadding * 2).roundToPx()
+    val spacing = GridColumnSpacing.roundToPx()
+    return ((gridWidth + spacing) / (ThumbnailMinSize.roundToPx() + spacing)).coerceAtLeast(1)
+}
+
+private val FolderHeaderHeight = 44.dp
+private val ThumbnailMinSize = 84.dp
+private val GridHorizontalPadding = 12.dp
+private val GridColumnSpacing = 8.dp
+
+@Composable
+private fun FolderHeader(group: ImageGroup, onOpen: () -> Unit, onRemove: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    ContextMenuArea(
+        items = {
+            listOf(
+                ContextMenuItem("エクスプローラーで開く", onOpen),
+                ContextMenuItem("このフォルダの ${group.images.size} 枚を一覧から削除", onRemove),
+            )
+        },
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(FolderHeaderHeight)
+                .background(colors.surface),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(painterResource(Res.drawable.ic_folder), null, tint = colors.primary, modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+            Tooltip(group.folder.path, modifier = Modifier.weight(1f)) {
+                Column {
+                    Text(
+                        group.folder.name.ifEmpty { group.folder.path },
+                        style = MaterialTheme.typography.titleSmall,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        group.folder.parent.orEmpty(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
+            Text(
+                "${group.images.size} 枚",
+                style = MaterialTheme.typography.labelMedium.merge(MonoNumberStyle),
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp),
+            )
         }
     }
 }
@@ -287,6 +404,35 @@ private fun Thumbnail(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth().padding(top = 5.dp, start = 2.dp, end = 2.dp),
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun ImageListPanelPreview() {
+    val imageGroups = listOf(
+        ImageGroup(File("/photos/trip_2026"), (1..5).map { ImageItem(File("/photos/trip_2026/IMG_$it.jpg")) }),
+        ImageGroup(File("/photos/misc"), (1..3).map { ImageItem(File("/photos/misc/IMG_$it.jpg")) }),
+    )
+    AppTheme(darkTheme = false) {
+        ImageListPanel(
+            imageGroups = imageGroups,
+            focusedFile = imageGroups.first().images.first().file,
+            selectedFiles = setOf(imageGroups.first().images.first().file),
+            isSelectionMode = false,
+            tools = null,
+            onClickImage = { _, _ -> },
+            onRemoveSelection = {},
+            onUndoRemoval = {},
+            onSelectAll = {},
+            onClearSelection = {},
+            onMoveFocus = {},
+            onRemove = {},
+            onReveal = {},
+            onOpenFolder = {},
+            onRemoveFolder = {},
+            modifier = Modifier.width(312.dp).height(640.dp),
         )
     }
 }
