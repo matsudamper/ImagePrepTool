@@ -79,7 +79,7 @@ jobs:
         run: |
           SHORT_SHA="${HEAD_SHA:0:7}"
           SAFE_REPO="${REPOSITORY##*/}"
-          SAFE_BRANCH="${BRANCH_NAME//\//-}"
+          SAFE_BRANCH="$(echo "${BRANCH_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')"
           ARTIFACT_NAME="${SAFE_REPO}-portable-win-${SAFE_BRANCH}-${SHORT_SHA}"
           PORTABLE_DIR="app/build/compose/binaries/main-release/portable"
           SOURCE_ZIP="$(ls "${PORTABLE_DIR}"/*.zip | head -n 1)"
