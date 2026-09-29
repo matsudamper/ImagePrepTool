@@ -261,7 +261,7 @@ fun ToolsDialog(tools: ExternalTools?, onRestart: () -> Unit, onClose: () -> Uni
         }
         Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(max = 420.dp)) {
             Column(Modifier.verticalScroll(rememberScrollState())) {
-                tools.statuses.forEachIndexed { index, status ->
+                tools.requiredStatuses.forEachIndexed { index, status ->
                     if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Top) {
                         Box(Modifier.padding(top = 1.dp)) {
@@ -297,7 +297,7 @@ fun ToolsDialog(tools: ExternalTools?, onRestart: () -> Unit, onClose: () -> Uni
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            "HEIC は heif-dec / heif-convert / magick のいずれか 1 つがあれば読み込めます。インストール後は PATH がアプリに反映されないため、「アプリを再起動」を押してください。",
+            "インストール後は PATH がアプリに反映されないため、「アプリを再起動」を押してください。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -306,13 +306,14 @@ fun ToolsDialog(tools: ExternalTools?, onRestart: () -> Unit, onClose: () -> Uni
 
 private fun installHint(tool: ExternalTool): String = when (tool) {
     ExternalTool.Cwebp -> "libwebp に含まれます"
-    ExternalTool.HeifDec, ExternalTool.HeifConvert -> "libheif に含まれます。下のコマンドで magick（ImageMagick）を入れれば代替できます"
+    ExternalTool.HeifDec, ExternalTool.HeifConvert -> "libheif に含まれます"
     ExternalTool.Magick -> "ImageMagick に含まれます（HEIC 対応版）"
 }
 
 private fun installCommand(tool: ExternalTool): String? = when (tool) {
     ExternalTool.Cwebp -> "winget install -e --id Google.Libwebp"
-    ExternalTool.HeifDec, ExternalTool.HeifConvert, ExternalTool.Magick -> "winget install ImageMagick.ImageMagick"
+    ExternalTool.HeifDec, ExternalTool.HeifConvert -> null
+    ExternalTool.Magick -> "winget install ImageMagick.ImageMagick"
 }
 
 @Composable
