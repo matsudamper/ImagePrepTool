@@ -22,6 +22,9 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+
       - name: ktlint
         run: ./gradlew ktlintCheck --continue --no-daemon
 
@@ -39,14 +42,22 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+
       - name: Build and test
         run: ./gradlew build --no-daemon
 
   package-windows-exe:
     runs-on: windows-latest
+    permissions:
+      contents: read
+      id-token: write
     outputs:
+      artifact_name: ${{ steps.name.outputs.artifact_name }}
       portable_artifact_url: ${{ steps.upload_portable.outputs.artifact-url }}
       installer_artifact_url: ${{ steps.upload_installer.outputs.artifact-url }}
+      s3_url: ${{ steps.upload_s3.outputs.url }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
@@ -56,6 +67,9 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+
       - name: Package portable Windows app (primary artifact)
         run: .\gradlew.bat :app:packagePortableWindowsExe --no-daemon
 
@@ -63,22 +77,49 @@ jobs:
         continue-on-error: true
         run: .\gradlew.bat :app:packageReleaseExe --no-daemon
 
+      - name: Rename portable ZIP with branch and short hash
+        id: name
+        shell: bash
+        env:
+          BRANCH_NAME: ${{ github.head_ref || github.ref_name }}
+          REPOSITORY: ${{ github.repository }}
+          # GITHUB_SHA はマージコミットのため、PR 上のコミットと一致する head の SHA を使う
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          SHORT_SHA="${HEAD_SHA:0:7}"
+          SAFE_REPO="${REPOSITORY##*/}"
+          SAFE_BRANCH="$(echo "${BRANCH_NAME}" | sed 's/[^A-Za-z0-9._-]/-/g')"
+          ARTIFACT_NAME="${SAFE_REPO}-portable-win-${SAFE_BRANCH}-${SHORT_SHA}"
+          PORTABLE_DIR="app/build/compose/binaries/main-release/portable"
+          SOURCE_ZIP="$(ls "${PORTABLE_DIR}"/*.zip | head -n 1)"
+          mv "${SOURCE_ZIP}" "${PORTABLE_DIR}/${ARTIFACT_NAME}.zip"
+          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
+          echo "PORTABLE_ZIP_PATH=${PORTABLE_DIR}/${ARTIFACT_NAME}.zip" >> "$GITHUB_ENV"
+
       - name: Upload installer EXE
         id: upload_installer
         if: success() || failure()
         continue-on-error: true
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ImagePrepTool-installer-exe
           path: app/build/compose/binaries/main-release/exe/*.exe
           if-no-files-found: ignore
 
-      - name: Upload portable ZIP
+      - name: Upload portable ZIP to GitHub Artifacts
         id: upload_portable
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: ImagePrepTool-portable-win
-          path: app/build/compose/binaries/main-release/portable/*.zip
+          name: ${{ steps.name.outputs.artifact_name }}
+          path: ${{ env.PORTABLE_ZIP_PATH }}
+
+      - name: Upload portable ZIP to S3
+        id: upload_s3
+        if: github.event_name == 'pull_request'
+        uses: matsudamper/actions/upload-matsudamper-s3@6f7068834e08294360d6e5987869a5f50c924c66 # v1.0.1
+        continue-on-error: true
+        with:
+          file_path: ${{ env.PORTABLE_ZIP_PATH }}
 
   report-artifacts:
     runs-on: ubuntu-latest
@@ -88,42 +129,58 @@ jobs:
       - name: Compose artifact download links
         id: artifact_links
         env:
+          ARTIFACT_NAME: ${{ needs.package-windows-exe.outputs.artifact_name }}
           PORTABLE_ARTIFACT_URL: ${{ needs.package-windows-exe.outputs.portable_artifact_url }}
           INSTALLER_ARTIFACT_URL: ${{ needs.package-windows-exe.outputs.installer_artifact_url }}
+          S3_URL: ${{ needs.package-windows-exe.outputs.s3_url }}
           WINDOWS_JOB_RESULT: ${{ needs.package-windows-exe.result }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          markdown=""
-          if [ -n "$PORTABLE_ARTIFACT_URL" ]; then
-            markdown="- [ImagePrepTool-portable-win](${PORTABLE_ARTIFACT_URL})"
-          fi
-          if [ -n "$INSTALLER_ARTIFACT_URL" ]; then
-            if [ -n "$markdown" ]; then
-              markdown="${markdown}"$'\n'
-            fi
-            markdown="${markdown}- [ImagePrepTool-installer-exe](${INSTALLER_ARTIFACT_URL})"
-          fi
 
-          if [ -n "$markdown" ] && [ -n "$PORTABLE_ARTIFACT_URL" ]; then
-            echo "failed=false" >> "$GITHUB_OUTPUT"
+          if [ -z "$PORTABLE_ARTIFACT_URL" ] || [ "$WINDOWS_JOB_RESULT" != "success" ]; then
+            if [ "$WINDOWS_JOB_RESULT" != "success" ]; then
+              error_message="❌ 成果物をビルドできませんでした (\`package-windows-exe\`: \`${WINDOWS_JOB_RESULT}\`, [run](${RUN_URL}))"
+            else
+              error_message="❌ 必須成果物の \`artifact-url\` がありません ([run](${RUN_URL}))"
+            fi
+            echo "failed=true" >> "$GITHUB_OUTPUT"
             {
               echo "message<<EOF"
-              echo "$markdown"
+              echo "$error_message"
               echo "EOF"
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          if [ "$WINDOWS_JOB_RESULT" != "success" ]; then
-            error_message="**エラー:** 成果物をビルドできませんでした（\`package-windows-exe\`: \`${WINDOWS_JOB_RESULT}\`）"
+          if [ -n "$S3_URL" ]; then
+            s3_row="| ☁️ S3 (portable) | zip | [Download](${S3_URL}) |"
           else
-            error_message="**エラー:** 必須成果物 \`ImagePrepTool-portable-win\` の \`artifact-url\` がありません"
+            s3_row="| ☁️ S3 (portable) | - | ⚠️ アップロード失敗 ([run](${RUN_URL})) |"
+          fi
+          installer_row=""
+          if [ -n "$INSTALLER_ARTIFACT_URL" ]; then
+            installer_row="| 🐙 GitHub Artifacts (installer) | zip | [Download](${INSTALLER_ARTIFACT_URL}) |"
           fi
 
-          echo "failed=true" >> "$GITHUB_OUTPUT"
+          echo "failed=false" >> "$GITHUB_OUTPUT"
           {
             echo "message<<EOF"
-            echo "$error_message"
+            echo "✅ Portable build is ready!"
+            echo ""
+            echo "| Storage | 圧縮方式 | Download Link |"
+            echo "| :--- | :--- | :--- |"
+            echo "| 🐙 GitHub Artifacts (portable) | zip | [Download](${PORTABLE_ARTIFACT_URL}) |"
+            echo "${s3_row}"
+            if [ -n "$installer_row" ]; then
+              echo "${installer_row}"
+            fi
+            echo ""
+            echo "---"
+            echo "*Artifact Name: \`${ARTIFACT_NAME}\`*"
+            echo "*Commit: [\`${HEAD_SHA}\`](${COMMIT_URL})*"
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
