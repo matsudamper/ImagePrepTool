@@ -303,13 +303,13 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
 }
 
 private fun installHint(tool: ExternalTool): String = when (tool) {
-    ExternalTool.Cwebp -> "libwebp に含まれます。winget にはパッケージが無いため、公式配布の libwebp を PATH に追加してください"
+    ExternalTool.Cwebp -> "libwebp に含まれます"
     ExternalTool.HeifDec, ExternalTool.HeifConvert -> "libheif に含まれます。下のコマンドで magick（ImageMagick）を入れれば代替できます"
     ExternalTool.Magick -> "ImageMagick に含まれます（HEIC 対応版）"
 }
 
 private fun installCommand(tool: ExternalTool): String? = when (tool) {
-    ExternalTool.Cwebp -> null
+    ExternalTool.Cwebp -> "winget install -e --id Google.Libwebp"
     ExternalTool.HeifDec, ExternalTool.HeifConvert, ExternalTool.Magick -> "winget install ImageMagick.ImageMagick"
 }
 
