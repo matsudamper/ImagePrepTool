@@ -20,12 +20,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AddPhotoAlternate
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Folder
-import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -49,6 +43,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import java.io.File
+import com.imagepreptool.resources.Res
+import com.imagepreptool.resources.ic_add_photo
+import com.imagepreptool.resources.ic_close
+import com.imagepreptool.resources.ic_folder
+import com.imagepreptool.resources.ic_folder_open
+import com.imagepreptool.resources.ic_photo_library
+import org.jetbrains.compose.resources.painterResource
 
 @Composable
 fun EmptyState(
@@ -92,7 +93,7 @@ fun EmptyState(
                         modifier = Modifier.size(64.dp).clip(RoundedCornerShape(18.dp)).background(colors.primaryContainer),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Icon(Icons.Rounded.PhotoLibrary, null, tint = colors.onPrimaryContainer, modifier = Modifier.size(32.dp))
+                        Icon(painterResource(Res.drawable.ic_photo_library), null, tint = colors.onPrimaryContainer, modifier = Modifier.size(32.dp))
                     }
                     Spacer(Modifier.height(20.dp))
                     Text(
@@ -108,12 +109,12 @@ fun EmptyState(
                     Spacer(Modifier.height(24.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Button(onClick = onOpenFolder, enabled = !isLoading) {
-                            Icon(Icons.Rounded.FolderOpen, null, modifier = Modifier.size(18.dp))
+                            Icon(painterResource(Res.drawable.ic_folder_open), null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("フォルダを開く")
                         }
                         OutlinedButton(onClick = onPickImages, enabled = !isLoading) {
-                            Icon(Icons.Rounded.AddPhotoAlternate, null, modifier = Modifier.size(18.dp))
+                            Icon(painterResource(Res.drawable.ic_add_photo), null, modifier = Modifier.size(18.dp))
                             Spacer(Modifier.width(8.dp))
                             Text("画像を選択")
                         }
@@ -157,7 +158,7 @@ private fun RecentFolderRow(dir: File, onOpen: () -> Unit, onForget: () -> Unit)
             .padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.Folder, null, tint = colors.primary, modifier = Modifier.size(20.dp))
+        Icon(painterResource(Res.drawable.ic_folder), null, tint = colors.primary, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(dir.name.ifEmpty { dir.path }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -171,7 +172,7 @@ private fun RecentFolderRow(dir: File, onOpen: () -> Unit, onForget: () -> Unit)
         }
         IconButton(onClick = onForget, modifier = Modifier.size(32.dp)) {
             if (hovered) {
-                Icon(Icons.Rounded.Close, contentDescription = "履歴から削除", tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                Icon(painterResource(Res.drawable.ic_close), contentDescription = "履歴から削除", tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
             }
         }
     }

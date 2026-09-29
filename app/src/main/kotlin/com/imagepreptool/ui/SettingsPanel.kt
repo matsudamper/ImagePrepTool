@@ -20,10 +20,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
-import androidx.compose.material.icons.rounded.FileUpload
-import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -68,6 +64,10 @@ import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.ResizeMode
 import com.imagepreptool.presentation.Notice
 import com.imagepreptool.presentation.NoticeAction
+import com.imagepreptool.resources.Res
+import com.imagepreptool.resources.ic_add
+import com.imagepreptool.resources.ic_file_upload
+import com.imagepreptool.resources.ic_folder
 import com.imagepreptool.service.CaptionTemplate
 import com.imagepreptool.service.OutputPlanner
 import com.imagepreptool.ui.components.CompactTextField
@@ -78,6 +78,7 @@ import com.imagepreptool.ui.components.NumberField
 import com.imagepreptool.ui.components.SegmentedControl
 import com.imagepreptool.ui.components.SettingsSection
 import com.imagepreptool.ui.theme.MonoNumberStyle
+import org.jetbrains.compose.resources.painterResource
 
 @Composable
 fun SettingsPanel(
@@ -130,7 +131,7 @@ fun SettingsPanel(
                 contentPadding = PaddingValues(horizontal = 16.dp),
                 modifier = Modifier.fillMaxWidth().height(44.dp),
             ) {
-                Icon(Icons.Rounded.FileUpload, null, modifier = Modifier.size(18.dp))
+                Icon(painterResource(Res.drawable.ic_file_upload), null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(if (includedCount == 0) "書き出す画像を選択してください" else "$includedCount 枚を書き出す")
             }
@@ -313,7 +314,7 @@ private fun CaptionTemplateEditor(
                     contentPadding = PaddingValues(horizontal = 8.dp),
                     modifier = Modifier.height(28.dp),
                 ) {
-                    Icon(Icons.Rounded.Add, null, modifier = Modifier.size(16.dp))
+                    Icon(painterResource(Res.drawable.ic_add), null, modifier = Modifier.size(16.dp))
                     Spacer(Modifier.width(4.dp))
                     Text("撮影情報を挿入", style = MaterialTheme.typography.labelMedium)
                 }
@@ -407,7 +408,7 @@ private fun OutputSection(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Row(Modifier.padding(start = 12.dp, end = 6.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Rounded.Folder, null, tint = colors.primary, modifier = Modifier.size(18.dp))
+                Icon(painterResource(Res.drawable.ic_folder), null, tint = colors.primary, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(

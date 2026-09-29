@@ -31,10 +31,6 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.onClick
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.BrokenImage
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -71,8 +67,13 @@ import java.io.File
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.presentation.ImageItem
 import com.imagepreptool.presentation.SelectMode
+import com.imagepreptool.resources.Res
+import com.imagepreptool.resources.ic_broken_image
+import com.imagepreptool.resources.ic_check
+import com.imagepreptool.resources.ic_close
 import com.imagepreptool.ui.components.Tooltip
 import com.imagepreptool.ui.theme.MonoNumberStyle
+import org.jetbrains.compose.resources.painterResource
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -212,7 +213,7 @@ private fun SelectionBar(count: Int, onInclude: () -> Unit, onExclude: () -> Uni
     ) {
         Tooltip("選択を解除 (Esc)") {
             IconButton(onClick = onClear, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Rounded.Close, "選択を解除", tint = colors.onPrimaryContainer, modifier = Modifier.size(18.dp))
+                Icon(painterResource(Res.drawable.ic_close), "選択を解除", tint = colors.onPrimaryContainer, modifier = Modifier.size(18.dp))
             }
         }
         Text(
@@ -282,7 +283,7 @@ private fun Thumbnail(
                 )
                 is ThumbnailState.Failed -> Tooltip(state.reason) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(dim)) {
-                        Icon(Icons.Rounded.BrokenImage, null, tint = colors.error, modifier = Modifier.size(24.dp))
+                        Icon(painterResource(Res.drawable.ic_broken_image), null, tint = colors.error, modifier = Modifier.size(24.dp))
                         Spacer(Modifier.height(4.dp))
                         Text(item.file.extension.uppercase(), style = MaterialTheme.typography.labelSmall, color = colors.onSurfaceVariant)
                     }
@@ -324,7 +325,7 @@ private fun IncludeBadge(included: Boolean, visible: Boolean, onToggle: () -> Un
                 .clickable(onClick = onToggle),
             contentAlignment = Alignment.Center,
         ) {
-            if (included) Icon(Icons.Rounded.Check, contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(15.dp))
+            if (included) Icon(painterResource(Res.drawable.ic_check), contentDescription = null, tint = colors.onPrimary, modifier = Modifier.size(15.dp))
         }
     }
 }

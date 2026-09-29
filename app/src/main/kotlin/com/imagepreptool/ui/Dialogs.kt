@@ -15,13 +15,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Error
-import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.RemoveCircleOutline
-import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -34,7 +27,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -43,8 +35,17 @@ import com.imagepreptool.model.ConflictPolicy
 import com.imagepreptool.model.ExternalTool
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.presentation.ExportState
+import com.imagepreptool.resources.Res
+import com.imagepreptool.resources.ic_check_circle
+import com.imagepreptool.resources.ic_error
+import com.imagepreptool.resources.ic_folder_open
+import com.imagepreptool.resources.ic_info
+import com.imagepreptool.resources.ic_remove_circle_outline
+import com.imagepreptool.resources.ic_warning_amber
 import com.imagepreptool.ui.theme.AppTheme
 import com.imagepreptool.ui.theme.MonoNumberStyle
+import org.jetbrains.compose.resources.DrawableResource
+import org.jetbrains.compose.resources.painterResource
 
 @Composable
 private fun AppDialog(
@@ -54,7 +55,7 @@ private fun AppDialog(
     modifier: Modifier = Modifier,
     dismissible: Boolean = true,
     width: Int = 440,
-    icon: ImageVector? = null,
+    icon: DrawableResource? = null,
     iconTint: androidx.compose.ui.graphics.Color = MaterialTheme.colorScheme.primary,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -72,7 +73,7 @@ private fun AppDialog(
             Column(Modifier.padding(24.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (icon != null) {
-                        Icon(icon, null, tint = iconTint, modifier = Modifier.size(24.dp))
+                        Icon(painterResource(icon), null, tint = iconTint, modifier = Modifier.size(24.dp))
                         Spacer(Modifier.width(12.dp))
                     }
                     Text(title, style = MaterialTheme.typography.titleLarge)
@@ -97,7 +98,7 @@ fun ConflictDialog(state: ExportState.ConfirmConflicts, onResolve: (ConflictPoli
     AppDialog(
         modifier = modifier,
         onDismiss = { onResolve(null) },
-        icon = Icons.Rounded.WarningAmber,
+        icon = Res.drawable.ic_warning_amber,
         iconTint = AppTheme.extended.warning,
         title = "同じ名前のファイルがあります",
         buttons = {
@@ -166,10 +167,10 @@ fun ResultDialog(state: ExportState.Finished, onOpenFolder: () -> Unit, onClose:
     val failures = state.failures
     val ext = AppTheme.extended
     val (icon, tint, title) = when {
-        state.cancelled -> Triple(Icons.Rounded.Info, MaterialTheme.colorScheme.onSurfaceVariant, "書き出しをキャンセルしました")
-        failures.isEmpty() -> Triple(Icons.Rounded.CheckCircle, ext.success, "書き出しが完了しました")
-        state.successCount == 0 -> Triple(Icons.Rounded.Error, MaterialTheme.colorScheme.error, "書き出せませんでした")
-        else -> Triple(Icons.Rounded.WarningAmber, ext.warning, "一部の画像を書き出せませんでした")
+        state.cancelled -> Triple(Res.drawable.ic_info, MaterialTheme.colorScheme.onSurfaceVariant, "書き出しをキャンセルしました")
+        failures.isEmpty() -> Triple(Res.drawable.ic_check_circle, ext.success, "書き出しが完了しました")
+        state.successCount == 0 -> Triple(Res.drawable.ic_error, MaterialTheme.colorScheme.error, "書き出せませんでした")
+        else -> Triple(Res.drawable.ic_warning_amber, ext.warning, "一部の画像を書き出せませんでした")
     }
     AppDialog(
         modifier = modifier,
@@ -182,7 +183,7 @@ fun ResultDialog(state: ExportState.Finished, onOpenFolder: () -> Unit, onClose:
             TextButton(onClick = onClose) { Text("閉じる") }
             if (state.successCount > 0) {
                 Button(onClick = onOpenFolder) {
-                    Icon(Icons.Rounded.FolderOpen, null, modifier = Modifier.size(18.dp))
+                    Icon(painterResource(Res.drawable.ic_folder_open), null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))
                     Text("フォルダを開く")
                 }
@@ -209,7 +210,7 @@ fun ResultDialog(state: ExportState.Finished, onOpenFolder: () -> Unit, onClose:
                 LazyColumn(Modifier.fillMaxWidth().heightIn(max = 200.dp)) {
                     items(failures) { failure ->
                         Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                            Icon(Icons.Rounded.RemoveCircleOutline, null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp).padding(top = 1.dp))
+                            Icon(painterResource(Res.drawable.ic_remove_circle_outline), null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp).padding(top = 1.dp))
                             Spacer(Modifier.width(8.dp))
                             Column {
                                 Text(failure.source.name, style = MaterialTheme.typography.bodyMedium)
@@ -261,9 +262,9 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Top) {
                         Box(Modifier.padding(top = 1.dp)) {
                             if (status.available) {
-                                Icon(Icons.Rounded.CheckCircle, "利用可能", tint = AppTheme.extended.success, modifier = Modifier.size(18.dp))
+                                Icon(painterResource(Res.drawable.ic_check_circle), "利用可能", tint = AppTheme.extended.success, modifier = Modifier.size(18.dp))
                             } else {
-                                Icon(Icons.Rounded.RemoveCircleOutline, "見つかりません", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                                Icon(painterResource(Res.drawable.ic_remove_circle_outline), "見つかりません", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
                             }
                         }
                         Spacer(Modifier.width(10.dp))

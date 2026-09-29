@@ -50,7 +50,7 @@ import com.imagepreptool.service.Resizer
 class ImagePrepViewModel(
     private val settings: SettingsStore = PreferencesSettingsStore(),
     private val checkTools: () -> ExternalTools = ExternalToolChecker::checkAll,
-) : ViewModel(), WorkspaceEvents {
+) : ViewModel() {
 
     private val viewModelStateFlow = MutableStateFlow(
         ImagePrepViewModelState(
@@ -60,11 +60,36 @@ class ImagePrepViewModel(
         ),
     )
 
+    private val listener = object : ImagePrepUiState.Listener {
+        override fun openFolder(dir: File) = this@ImagePrepViewModel.openFolder(dir)
+        override fun addFiles(files: List<File>) = this@ImagePrepViewModel.addFiles(files)
+        override fun forgetRecent(dir: File) = this@ImagePrepViewModel.forgetRecent(dir)
+        override fun closeAll() = this@ImagePrepViewModel.closeAll()
+        override fun clickImage(file: File, mode: SelectMode) = this@ImagePrepViewModel.clickImage(file, mode)
+        override fun toggleIncluded(file: File) = this@ImagePrepViewModel.toggleIncluded(file)
+        override fun toggleFocusedIncluded() = this@ImagePrepViewModel.toggleFocusedIncluded()
+        override fun setSelectionIncluded(included: Boolean) = this@ImagePrepViewModel.setSelectionIncluded(included)
+        override fun setAllIncluded(included: Boolean) = this@ImagePrepViewModel.setAllIncluded(included)
+        override fun selectAll() = this@ImagePrepViewModel.selectAll()
+        override fun clearSelection() = this@ImagePrepViewModel.clearSelection()
+        override fun moveFocus(delta: Int) = this@ImagePrepViewModel.moveFocus(delta)
+        override fun removeImage(file: File) = this@ImagePrepViewModel.removeImage(file)
+        override fun excludeUnreadable() = this@ImagePrepViewModel.excludeUnreadable()
+        override fun updateOptions(transform: (EditOptions) -> EditOptions) = this@ImagePrepViewModel.updateOptions(transform)
+        override fun chooseOutputDirectory(dir: File) = this@ImagePrepViewModel.chooseOutputDirectory(dir)
+        override fun resetOutputDirectory() = this@ImagePrepViewModel.resetOutputDirectory()
+        override fun refreshTools() = this@ImagePrepViewModel.refreshTools()
+        override fun requestExport() = this@ImagePrepViewModel.requestExport()
+        override fun resolveConflicts(policy: ConflictPolicy?) = this@ImagePrepViewModel.resolveConflicts(policy)
+        override fun cancelExport() = this@ImagePrepViewModel.cancelExport()
+        override fun dismissExport() = this@ImagePrepViewModel.dismissExport()
+    }
+
     val uiStateFlow: StateFlow<ImagePrepUiState> =
-        MutableStateFlow(viewModelStateFlow.value.toUiState()).also { uiStateFlow ->
+        MutableStateFlow(viewModelStateFlow.value.toUiState(listener)).also { uiStateFlow ->
             viewModelScope.launch {
                 viewModelStateFlow.collect { viewModelState ->
-                    uiStateFlow.value = viewModelState.toUiState()
+                    uiStateFlow.value = viewModelState.toUiState(listener)
                 }
             }
         }.asStateFlow()
@@ -96,7 +121,7 @@ class ImagePrepViewModel(
 
     // region 画像の読み込み
 
-    fun openFolder(dir: File) {
+    private fun openFolder(dir: File) {
         // 後から開いたフォルダを優先し、前の読み込み結果で上書きしない
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
@@ -112,7 +137,7 @@ class ImagePrepViewModel(
             }
             mutate {
                 it.copy(
-                    images = files.map(::ImageItem),
+                    images = files.map { ImageItem(it, included = true) },
                     sourceFolder = dir,
                     focusedFile = files.first(),
                     selection = setOf(files.first()),
@@ -124,7 +149,7 @@ class ImagePrepViewModel(
     }
 
     /** ドロップやファイル選択で追加する。フォルダが含まれていれば中の画像を追加する */
-    fun addFiles(files: List<File>) {
+    private fun addFiles(files: List<File>) {
         if (files.size == 1 && files.single().isDirectory && viewModelStateFlow.value.images.isEmpty()) {
             openFolder(files.single())
             return
@@ -140,7 +165,7 @@ class ImagePrepViewModel(
             val added = supported.map { it.absoluteFile }.distinct().filter { it !in existing }
             mutate { state ->
                 state.copy(
-                    images = state.images + added.map(::ImageItem),
+                    images = state.images + added.map { ImageItem(it, included = true) },
                     sourceFolder = if (state.images.isEmpty()) null else state.sourceFolder,
                     focusedFile = state.focusedFile ?: added.firstOrNull(),
                 )
@@ -154,13 +179,13 @@ class ImagePrepViewModel(
         }
     }
 
-    internal fun snapshotForTest(): ImagePrepUiState = viewModelStateFlow.value.toUiState()
+    internal fun snapshotForTest(): ImagePrepUiState = viewModelStateFlow.value.toUiState(listener)
 
     internal fun addFilesForTest(files: List<File>) {
-        mutate { it.copy(images = files.map(::ImageItem), focusedFile = files.firstOrNull()) }
+        mutate { it.copy(images = files.map { file -> ImageItem(file, included = true) }, focusedFile = files.firstOrNull()) }
     }
 
-    override fun closeAll() {
+    private fun closeAll() {
         // 書き出しの準備中・実行中は閉じない（閉じた画像が書き出されるのを防ぐ）
         val export = viewModelStateFlow.value.export
         if (export is ExportState.Preparing || export is ExportState.Running || exportJob?.isActive == true) return
@@ -169,7 +194,7 @@ class ImagePrepViewModel(
     }
 
     /** [file] が複数選択に含まれていれば選択中の全画像を一覧から外す */
-    override fun removeImage(file: File) {
+    private fun removeImage(file: File) {
         mutate { state ->
             val targets = state.targetsFor(file)
             val index = state.images.indexOfFirst { it.file == file }
@@ -192,7 +217,7 @@ class ImagePrepViewModel(
         }
     }
 
-    fun forgetRecent(dir: File) {
+    private fun forgetRecent(dir: File) {
         mutate { it.copy(recentFolders = it.recentFolders - dir) }
         settings.saveRecentFolders(viewModelStateFlow.value.recentFolders)
     }
@@ -212,15 +237,11 @@ class ImagePrepViewModel(
 
     // region 選択とフォーカス
 
-    fun focus(file: File) {
-        clickImage(file, SelectMode.Single)
-    }
-
     /**
      * 一覧でのクリック。Single はプレビューも切り替える。
      * Toggle（Ctrl）と Range（Shift）は選択だけを変え、プレビュー中の画像はそのまま。
      */
-    override fun clickImage(file: File, mode: SelectMode) {
+    private fun clickImage(file: File, mode: SelectMode) {
         mutate { state ->
             when (mode) {
                 SelectMode.Single -> state.copy(focusedFile = file, selection = setOf(file), anchor = file)
@@ -243,15 +264,15 @@ class ImagePrepViewModel(
         }
     }
 
-    override fun selectAll() {
+    private fun selectAll() {
         mutate { state -> state.copy(selection = state.images.map { it.file }.toSet()) }
     }
 
-    override fun clearSelection() {
+    private fun clearSelection() {
         mutate { state -> state.copy(selection = setOfNotNull(state.focusedFile), anchor = state.focusedFile) }
     }
 
-    override fun moveFocus(delta: Int) {
+    private fun moveFocus(delta: Int) {
         mutate { state ->
             if (state.images.isEmpty()) return@mutate state
             val current = state.images.indexOfFirst { it.file == state.focusedFile }.coerceAtLeast(0)
@@ -261,7 +282,7 @@ class ImagePrepViewModel(
     }
 
     /** [file] が複数選択に含まれていれば選択中の全画像を、そうでなければ [file] だけを切り替える */
-    override fun toggleIncluded(file: File) {
+    private fun toggleIncluded(file: File) {
         mutate { state ->
             val targets = state.targetsFor(file)
             val included = !(state.images.firstOrNull { it.file == file }?.included ?: true)
@@ -269,22 +290,22 @@ class ImagePrepViewModel(
         }
     }
 
-    override fun toggleFocusedIncluded() {
+    private fun toggleFocusedIncluded() {
         viewModelStateFlow.value.focusedFile?.let(::toggleIncluded)
     }
 
-    override fun setSelectionIncluded(included: Boolean) {
+    private fun setSelectionIncluded(included: Boolean) {
         mutate { state ->
             val targets = state.effectiveSelection
             state.copy(images = state.images.map { if (it.file in targets) it.copy(included = included) else it })
         }
     }
 
-    override fun setAllIncluded(included: Boolean) {
+    private fun setAllIncluded(included: Boolean) {
         mutate { state -> state.copy(images = state.images.map { it.copy(included = included) }) }
     }
 
-    override fun excludeUnreadable() {
+    private fun excludeUnreadable() {
         mutate { state ->
             val tools = state.tools ?: return@mutate state
             state.copy(images = state.images.map { if (!state.canRead(it.file, tools)) it.copy(included = false) else it })
@@ -295,21 +316,21 @@ class ImagePrepViewModel(
 
     // region 設定
 
-    override fun updateOptions(transform: (EditOptions) -> EditOptions) {
+    private fun updateOptions(transform: (EditOptions) -> EditOptions) {
         mutate { it.copy(options = transform(it.options)) }
     }
 
-    override fun chooseOutputDirectory(dir: File) {
+    private fun chooseOutputDirectory(dir: File) {
         mutate { it.copy(customOutputDir = dir) }
         settings.saveCustomOutputDir(dir)
     }
 
-    override fun resetOutputDirectory() {
+    private fun resetOutputDirectory() {
         mutate { it.copy(customOutputDir = null) }
         settings.saveCustomOutputDir(null)
     }
 
-    fun refreshTools() {
+    private fun refreshTools() {
         viewModelScope.launch {
             val tools = withContext(Dispatchers.IO) { checkTools() }
             previewCache.clear()
@@ -321,9 +342,9 @@ class ImagePrepViewModel(
 
     // region 書き出し
 
-    override fun requestExport() {
+    private fun requestExport() {
         val state = viewModelStateFlow.value
-        val ui = state.toUiState()
+        val ui = state.toUiState(listener)
         if (!ui.canExport) return
         val outputDir = ui.outputDirectory ?: return
         // 計画中に再度呼ばれても二重に書き出さないよう、先に状態を確保する
@@ -356,7 +377,7 @@ class ImagePrepViewModel(
         }
     }
 
-    fun resolveConflicts(policy: ConflictPolicy?) {
+    private fun resolveConflicts(policy: ConflictPolicy?) {
         val confirm = viewModelStateFlow.value.export as? ExportState.ConfirmConflicts ?: return
         if (policy == null) {
             mutate { it.copy(export = ExportState.Idle) }
@@ -366,13 +387,13 @@ class ImagePrepViewModel(
         startExport(OutputPlanner.applyPolicy(confirm.plan, policy), outputDir)
     }
 
-    fun cancelExport() {
+    private fun cancelExport() {
         val running = viewModelStateFlow.value.export as? ExportState.Running ?: return
         mutate { it.copy(export = running.copy(cancelling = true)) }
         exportJob?.cancel()
     }
 
-    fun dismissExport() {
+    private fun dismissExport() {
         if (viewModelStateFlow.value.export is ExportState.Running) return
         mutate { it.copy(export = ExportState.Idle) }
     }
@@ -382,7 +403,7 @@ class ImagePrepViewModel(
         val options = state.options
         val processor = ImageProcessor(state.tools ?: ExternalTools.None)
         val results = Collections.synchronizedList(mutableListOf<ProcessResult>())
-        mutate { it.copy(export = ExportState.Running(0, plan.size, plan.firstOrNull()?.source?.name)) }
+        mutate { it.copy(export = ExportState.Running(done = 0, total = plan.size, currentName = plan.firstOrNull()?.source?.name, cancelling = false)) }
 
         exportJob = viewModelScope.launch {
             var cancelled = false
@@ -446,10 +467,10 @@ class ImagePrepViewModel(
     private suspend fun renderPreview(key: PreviewKey) {
         val file = key.file
         if (file == null) {
-            mutate { it.copy(preview = PreviewState()) }
+            mutate { it.copy(preview = EmptyPreview) }
             return
         }
-        mutate { it.copy(preview = PreviewState(file = file, loading = true)) }
+        mutate { it.copy(preview = EmptyPreview.copy(file = file, loading = true)) }
         val tools = key.tools ?: viewModelStateFlow.value.tools ?: ExternalTools.None
         val cacheKey = "${file.absolutePath}:${file.lastModified()}"
         val source = previewCache[cacheKey] ?: try {
@@ -460,7 +481,7 @@ class ImagePrepViewModel(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Throwable) {
-            mutate { it.copy(preview = PreviewState(file = file, error = e.message ?: "読み込めません")) }
+            mutate { it.copy(preview = EmptyPreview.copy(file = file, error = e.message ?: "読み込めません")) }
             return
         }
         val original = withContext(Dispatchers.Default) { source.loaded.image.toComposeImageBitmap() }
@@ -526,6 +547,18 @@ private suspend fun <T> Flow<T>.collectLatestSafe(action: suspend (T) -> Unit) {
     }
 }
 
+private val EmptyPreview = PreviewState(
+    file = null,
+    original = null,
+    processed = null,
+    originalSize = null,
+    outputSize = null,
+    outputFormat = null,
+    captionFields = mapOf(),
+    loading = false,
+    error = null,
+)
+
 internal data class ImagePrepViewModelState(
     val images: List<ImageItem> = emptyList(),
     val sourceFolder: File? = null,
@@ -537,7 +570,7 @@ internal data class ImagePrepViewModelState(
     val customOutputDir: File? = null,
     val tools: ExternalTools? = null,
     val recentFolders: List<File> = emptyList(),
-    val preview: PreviewState = PreviewState(),
+    val preview: PreviewState = EmptyPreview,
     val export: ExportState = ExportState.Idle,
     val isLoading: Boolean = false,
 ) {
@@ -552,7 +585,7 @@ internal data class ImagePrepViewModelState(
     fun canRead(file: File, tools: ExternalTools): Boolean = !ImageLoader.isHeif(file) || tools.heifDecoder != null
 }
 
-internal fun ImagePrepViewModelState.toUiState(): ImagePrepUiState {
+internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listener): ImagePrepUiState {
     val included = images.filter { it.included }
     val outputDir = customOutputDir ?: defaultOutputDir
     val notices = buildList {
@@ -561,7 +594,7 @@ internal fun ImagePrepViewModelState.toUiState(): ImagePrepUiState {
             ImageLoader.isHeif(it.file) || OutputPlanner.resolveFormat(it.file, options.outputFormat) == OutputFormat.Webp
         }
         if (tools == null && needsTools) {
-            add(Notice("外部ツールを確認しています…", blocking = true))
+            add(Notice("外部ツールを確認しています…", blocking = true, action = null))
         }
         if (tools != null) {
             val needsWebp = included.any { OutputPlanner.resolveFormat(it.file, options.outputFormat) == OutputFormat.Webp }
@@ -577,7 +610,7 @@ internal fun ImagePrepViewModelState.toUiState(): ImagePrepUiState {
             options.fileNameSuffix.isBlank() &&
             included.any { it.file.absoluteFile.parentFile?.normalize() == outputDir.absoluteFile.normalize() }
         ) {
-            add(Notice("出力先が元画像と同じフォルダです。元画像は上書きされず「(2)」付きの名前で保存されます。接尾辞の設定がおすすめです。", blocking = false))
+            add(Notice("出力先が元画像と同じフォルダです。元画像は上書きされず「(2)」付きの名前で保存されます。接尾辞の設定がおすすめです。", blocking = false, action = null))
         }
     }
     val folder = sourceFolder
@@ -597,6 +630,7 @@ internal fun ImagePrepViewModelState.toUiState(): ImagePrepUiState {
         export = export,
         notices = notices,
         isLoading = isLoading,
+        listener = listener,
     )
 }
 

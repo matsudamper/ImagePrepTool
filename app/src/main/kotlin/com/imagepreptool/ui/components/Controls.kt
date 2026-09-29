@@ -24,10 +24,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ErrorOutline
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.WarningAmber
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,14 +45,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.imagepreptool.resources.Res
+import com.imagepreptool.resources.ic_error_outline
+import com.imagepreptool.resources.ic_info
+import com.imagepreptool.resources.ic_warning_amber
 import com.imagepreptool.ui.theme.AppTheme
 import com.imagepreptool.ui.theme.MonoNumberStyle
+import org.jetbrains.compose.resources.painterResource
 
 /** 設定パネルの 1 セクション */
 @Composable
@@ -276,13 +276,13 @@ fun NoticeCard(
     val ext = AppTheme.extended
     val colors = MaterialTheme.colorScheme
     val (container, content, icon) = when (tone) {
-        NoticeTone.Info -> Triple(colors.secondaryContainer, colors.onSecondaryContainer, Icons.Rounded.Info)
-        NoticeTone.Warning -> Triple(ext.warningContainer, ext.onWarningContainer, Icons.Rounded.WarningAmber)
-        NoticeTone.Error -> Triple(colors.errorContainer, colors.onErrorContainer, Icons.Rounded.ErrorOutline)
+        NoticeTone.Info -> Triple(colors.secondaryContainer, colors.onSecondaryContainer, Res.drawable.ic_info)
+        NoticeTone.Warning -> Triple(ext.warningContainer, ext.onWarningContainer, Res.drawable.ic_warning_amber)
+        NoticeTone.Error -> Triple(colors.errorContainer, colors.onErrorContainer, Res.drawable.ic_error_outline)
     }
     Surface(color = container, contentColor = content, shape = MaterialTheme.shapes.small, modifier = modifier.fillMaxWidth()) {
         Row(modifier = Modifier.padding(start = 10.dp, end = 4.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.Top) {
-            Icon(icon, contentDescription = null, modifier = Modifier.padding(top = 1.dp).size(16.dp))
+            Icon(painterResource(icon), contentDescription = null, modifier = Modifier.padding(top = 1.dp).size(16.dp))
             Spacer(Modifier.width(8.dp))
             Text(text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f).padding(top = 1.dp, end = 6.dp))
             if (actionLabel != null) {
@@ -317,7 +317,6 @@ fun Tooltip(text: String, modifier: Modifier = Modifier, content: @Composable ()
 fun Pill(
     text: String,
     modifier: Modifier = Modifier,
-    icon: ImageVector? = null,
     container: Color = MaterialTheme.colorScheme.surfaceContainerHighest,
     content: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     border: BorderStroke? = null,
@@ -328,7 +327,6 @@ fun Pill(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            if (icon != null) Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp))
             Text(text, style = MaterialTheme.typography.labelMedium.merge(MonoNumberStyle), maxLines = 1, overflow = TextOverflow.Ellipsis, textAlign = TextAlign.Center)
         }
     }

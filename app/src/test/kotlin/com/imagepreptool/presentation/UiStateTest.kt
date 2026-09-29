@@ -11,6 +11,11 @@ import com.imagepreptool.model.OutputFormat
 
 class UiStateTest {
 
+    private val listener = ImagePrepViewModel(
+        settings = com.imagepreptool.data.InMemorySettingsStore(),
+        checkTools = { ExternalTools.None },
+    ).snapshotForTest().listener
+
     @Test
     fun naturalOrderSortsNumbersByValue() {
         val names = listOf("IMG_10.jpg", "IMG_2.jpg", "img_1.jpg", "IMG_3b.jpg")
@@ -23,19 +28,19 @@ class UiStateTest {
     @Test
     fun webpWithoutCwebpBlocksExport() {
         val state = ImagePrepViewModelState(
-            images = listOf(ImageItem(File("/photos/a.jpg"))),
+            images = listOf(ImageItem(File("/photos/a.jpg"), included = true)),
             options = EditOptions(outputFormat = OutputFormat.Webp),
             tools = ExternalTools.None,
-        ).toUiState()
+        ).toUiState(listener)
         assertFalse(state.canExport)
         assertTrue(state.notices.any { it.blocking && it.action == NoticeAction.ShowTools })
     }
 
     @Test
     fun toolDependentExportWaitsForToolCheck() {
-        val heic = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.heic"))), tools = null).toUiState()
+        val heic = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.heic"), included = true)), tools = null).toUiState(listener)
         assertFalse(heic.canExport)
-        val jpeg = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), tools = null).toUiState()
+        val jpeg = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"), included = true)), tools = null).toUiState(listener)
         assertTrue(jpeg.canExport)
     }
 
@@ -46,25 +51,25 @@ class UiStateTest {
             checkTools = { ExternalTools.None },
         )
         vm.addFilesForTest(listOf(File("/photos/a.jpg")))
-        vm.requestExport()
+        vm.snapshotForTest().listener.requestExport()
         assertEquals(ExportState.Preparing, vm.snapshotForTest().export)
         assertFalse(vm.snapshotForTest().canExport)
         // 準備中は閉じられない
-        vm.closeAll()
+        vm.snapshotForTest().listener.closeAll()
         assertEquals(1, vm.snapshotForTest().images.size)
     }
 
     @Test
     fun heicWithoutDecoderCanBeExcluded() {
         val state = ImagePrepViewModelState(
-            images = listOf(ImageItem(File("/photos/a.jpg")), ImageItem(File("/photos/b.heic"))),
+            images = listOf(ImageItem(File("/photos/a.jpg"), included = true), ImageItem(File("/photos/b.heic"), included = true)),
             tools = ExternalTools.None,
         )
-        assertTrue(state.toUiState().notices.any { it.action == NoticeAction.ExcludeUnreadable })
+        assertTrue(state.toUiState(listener).notices.any { it.action == NoticeAction.ExcludeUnreadable })
         val excluded = state.copy(
             images = state.images.map { if (!state.canRead(it.file, ExternalTools.None)) it.copy(included = false) else it },
         )
-        val ui = excluded.toUiState()
+        val ui = excluded.toUiState(listener)
         assertTrue(ui.canExport)
         assertEquals(1, ui.includedCount)
         assertEquals(File("/photos/output"), ui.outputDirectory)
@@ -78,23 +83,23 @@ class UiStateTest {
             checkTools = { ExternalTools.None },
         )
         vm.addFilesForTest(files)
-        vm.clickImage(files[1], SelectMode.Single)
-        vm.clickImage(files[3], SelectMode.Range)
-        vm.clickImage(files[4], SelectMode.Toggle)
+        vm.snapshotForTest().listener.clickImage(files[1], SelectMode.Single)
+        vm.snapshotForTest().listener.clickImage(files[3], SelectMode.Range)
+        vm.snapshotForTest().listener.clickImage(files[4], SelectMode.Toggle)
         var state = vm.snapshotForTest()
         // プレビューは最初にクリックした画像のまま
         assertEquals(files[1], state.focusedFile)
         assertEquals(setOf(files[1], files[2], files[3], files[4]), state.selectedFiles)
 
-        vm.toggleIncluded(files[2])
+        vm.snapshotForTest().listener.toggleIncluded(files[2])
         state = vm.snapshotForTest()
         assertEquals(listOf(true, false, false, false, false), state.images.map { it.included })
 
         // 選択外の画像はその 1 枚だけ
-        vm.toggleIncluded(files[0])
+        vm.snapshotForTest().listener.toggleIncluded(files[0])
         assertEquals(listOf(false, false, false, false, false), vm.snapshotForTest().images.map { it.included })
 
-        vm.removeImage(files[3])
+        vm.snapshotForTest().listener.removeImage(files[3])
         state = vm.snapshotForTest()
         assertEquals(listOf(files[0]), state.images.map { it.file })
         assertEquals(files[0], state.focusedFile)

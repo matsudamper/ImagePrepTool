@@ -16,13 +16,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.AddPhotoAlternate
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Download
-import androidx.compose.material.icons.rounded.Extension
-import androidx.compose.material.icons.rounded.Folder
-import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.HorizontalDivider
@@ -41,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -58,9 +52,16 @@ import com.imagepreptool.presentation.ExportState
 import com.imagepreptool.presentation.ImagePrepUiState
 import com.imagepreptool.presentation.ImagePrepViewModel
 import com.imagepreptool.presentation.NoticeAction
-import com.imagepreptool.presentation.WorkspaceEvents
+import com.imagepreptool.resources.Res
+import com.imagepreptool.resources.ic_add_photo
+import com.imagepreptool.resources.ic_close
+import com.imagepreptool.resources.ic_download
+import com.imagepreptool.resources.ic_extension
+import com.imagepreptool.resources.ic_folder
+import com.imagepreptool.resources.ic_folder_open
 import com.imagepreptool.ui.components.Tooltip
 import com.imagepreptool.ui.theme.AppTheme
+import org.jetbrains.compose.resources.painterResource
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -70,7 +71,8 @@ fun App(
     modifier: Modifier = Modifier,
 ) {
     val uiState by viewModel.uiStateFlow.collectAsState()
-    val workspaceEvents: WorkspaceEvents = viewModel
+    val listener = uiState.listener
+    val latestUiState by rememberUpdatedState(uiState)
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showTools by remember { mutableStateOf(false) }
@@ -82,23 +84,23 @@ fun App(
         }
     }
 
-    val actions = remember(viewModel, dialogParent) {
+    val actions = remember(listener, dialogParent) {
         AppActions(
             openFolder = {
-                DesktopDialogs.pickDirectory(dialogParent, "画像のあるフォルダを選択", viewModel.uiStateFlow.value.sourcePath?.let(::File))
-                    ?.let(viewModel::openFolder)
+                DesktopDialogs.pickDirectory(dialogParent, "画像のあるフォルダを選択", latestUiState.sourcePath?.let(::File))
+                    ?.let(listener::openFolder)
             },
             pickImages = {
-                DesktopDialogs.pickImages(dialogParent, viewModel.uiStateFlow.value.sourcePath?.let(::File))
+                DesktopDialogs.pickImages(dialogParent, latestUiState.sourcePath?.let(::File))
                     .takeIf { it.isNotEmpty() }
-                    ?.let(viewModel::addFiles)
+                    ?.let(listener::addFiles)
             },
             showMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
         )
     }
 
     var dragging by remember { mutableStateOf(false) }
-    val dropTarget = remember(viewModel) {
+    val dropTarget = remember(listener) {
         object : DragAndDropTarget {
             override fun onEntered(event: DragAndDropEvent) {
                 dragging = true
@@ -116,7 +118,7 @@ fun App(
                 dragging = false
                 val files = droppedFiles(event)
                 if (files.isEmpty()) return false
-                viewModel.addFiles(files)
+                listener.addFiles(files)
                 return true
             }
         }
@@ -134,12 +136,12 @@ fun App(
                     isLoading = uiState.isLoading,
                     onOpenFolder = actions.openFolder,
                     onPickImages = actions.pickImages,
-                    onOpenRecent = viewModel::openFolder,
-                    onForgetRecent = viewModel::forgetRecent,
+                    onOpenRecent = listener::openFolder,
+                    onForgetRecent = listener::forgetRecent,
                 )
                 ToolsButton(uiState, onClick = { showTools = true }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
             } else {
-                Workspace(uiState, workspaceEvents, actions, dialogParent, onShowTools = { showTools = true })
+                Workspace(uiState, actions, dialogParent, onShowTools = { showTools = true })
             }
 
             AnimatedVisibility(visible = dragging, enter = fadeIn(), exit = fadeOut()) {
@@ -152,20 +154,20 @@ fun App(
 
     when (val export = uiState.export) {
         ExportState.Idle, ExportState.Preparing -> Unit
-        is ExportState.ConfirmConflicts -> ConflictDialog(export, viewModel::resolveConflicts)
-        is ExportState.Running -> ProgressDialog(export, viewModel::cancelExport)
+        is ExportState.ConfirmConflicts -> ConflictDialog(export, listener::resolveConflicts)
+        is ExportState.Running -> ProgressDialog(export, listener::cancelExport)
         is ExportState.Finished -> ResultDialog(
             state = export,
             onOpenFolder = {
                 DesktopDialogs.openFolder(export.outputDir)?.let(actions.showMessage)
-                viewModel.dismissExport()
+                listener.dismissExport()
             },
-            onClose = viewModel::dismissExport,
+            onClose = listener::dismissExport,
         )
     }
 
     if (showTools) {
-        ToolsDialog(uiState.tools, onRecheck = viewModel::refreshTools, onClose = { showTools = false })
+        ToolsDialog(uiState.tools, onRecheck = listener::refreshTools, onClose = { showTools = false })
     }
 }
 
@@ -187,7 +189,6 @@ private fun droppedFiles(event: DragAndDropEvent): List<File> {
 @Composable
 private fun Workspace(
     uiState: ImagePrepUiState,
-    events: WorkspaceEvents,
     actions: AppActions,
     dialogParent: Component?,
     onShowTools: () -> Unit,
@@ -195,7 +196,7 @@ private fun Workspace(
 ) {
     val colors = MaterialTheme.colorScheme
     Column(modifier.fillMaxSize()) {
-        TopBar(uiState, events, actions, onShowTools)
+        TopBar(uiState, actions, onShowTools)
         Row(Modifier.weight(1f).fillMaxWidth()) {
             ImageListPanel(
                 images = uiState.images,
@@ -203,15 +204,15 @@ private fun Workspace(
                 focusedFile = uiState.focusedFile,
                 selectedFiles = uiState.selectedFiles,
                 tools = uiState.tools,
-                onClickImage = events::clickImage,
-                onToggle = events::toggleIncluded,
-                onSetAll = events::setAllIncluded,
-                onSetSelectionInclusion = events::setSelectionIncluded,
-                onSelectAll = events::selectAll,
-                onClearSelection = events::clearSelection,
-                onMoveFocus = events::moveFocus,
-                onToggleCurrentInclusion = events::toggleFocusedIncluded,
-                onRemove = events::removeImage,
+                onClickImage = uiState.listener::clickImage,
+                onToggle = uiState.listener::toggleIncluded,
+                onSetAll = uiState.listener::setAllIncluded,
+                onSetSelectionInclusion = uiState.listener::setSelectionIncluded,
+                onSelectAll = uiState.listener::selectAll,
+                onClearSelection = uiState.listener::clearSelection,
+                onMoveFocus = uiState.listener::moveFocus,
+                onToggleCurrentInclusion = uiState.listener::toggleFocusedIncluded,
+                onRemove = uiState.listener::removeImage,
                 onReveal = { file -> DesktopDialogs.revealFile(file)?.let(actions.showMessage) },
                 modifier = Modifier.width(312.dp),
             )
@@ -223,8 +224,8 @@ private fun Workspace(
                 index = index,
                 total = uiState.images.size,
                 options = uiState.options,
-                onToggleInclusion = events::toggleFocusedIncluded,
-                onMove = events::moveFocus,
+                onToggleInclusion = uiState.listener::toggleFocusedIncluded,
+                onMove = uiState.listener::moveFocus,
                 modifier = Modifier.weight(1f),
             )
             VerticalDivider(color = colors.outlineVariant)
@@ -238,19 +239,19 @@ private fun Workspace(
                 notices = uiState.notices,
                 includedCount = uiState.includedCount,
                 canExport = uiState.canExport,
-                onOptionsChange = events::updateOptions,
+                onOptionsChange = uiState.listener::updateOptions,
                 onChooseOutput = {
                     DesktopDialogs.pickDirectory(dialogParent, "書き出し先のフォルダを選択", uiState.outputDirectory)
-                        ?.let(events::chooseOutputDirectory)
+                        ?.let(uiState.listener::chooseOutputDirectory)
                 },
-                onResetOutput = events::resetOutputDirectory,
+                onResetOutput = uiState.listener::resetOutputDirectory,
                 onNoticeAction = { action ->
                     when (action) {
-                        NoticeAction.ExcludeUnreadable -> events.excludeUnreadable()
+                        NoticeAction.ExcludeUnreadable -> uiState.listener.excludeUnreadable()
                         NoticeAction.ShowTools -> onShowTools()
                     }
                 },
-                onExport = events::requestExport,
+                onExport = uiState.listener::requestExport,
                 modifier = Modifier.width(348.dp),
             )
         }
@@ -260,7 +261,6 @@ private fun Workspace(
 @Composable
 private fun TopBar(
     uiState: ImagePrepUiState,
-    events: WorkspaceEvents,
     actions: AppActions,
     onShowTools: () -> Unit,
     modifier: Modifier = Modifier,
@@ -272,7 +272,7 @@ private fun TopBar(
                 modifier = Modifier.fillMaxWidth().height(52.dp).padding(start = 16.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(Icons.Rounded.Folder, null, tint = colors.primary, modifier = Modifier.size(20.dp))
+                Icon(painterResource(Res.drawable.ic_folder), null, tint = colors.primary, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(
@@ -292,15 +292,15 @@ private fun TopBar(
                     }
                 }
                 Tooltip("別のフォルダを開く (Ctrl+O)") {
-                    IconButton(onClick = actions.openFolder) { Icon(Icons.Rounded.FolderOpen, "別のフォルダを開く") }
+                    IconButton(onClick = actions.openFolder) { Icon(painterResource(Res.drawable.ic_folder_open), "別のフォルダを開く") }
                 }
                 Tooltip("画像を追加") {
-                    IconButton(onClick = actions.pickImages) { Icon(Icons.Rounded.AddPhotoAlternate, "画像を追加") }
+                    IconButton(onClick = actions.pickImages) { Icon(painterResource(Res.drawable.ic_add_photo), "画像を追加") }
                 }
                 ToolsButton(uiState, onClick = onShowTools)
                 VerticalDivider(Modifier.height(24.dp).padding(horizontal = 4.dp), color = colors.outlineVariant)
                 Tooltip("すべて閉じる") {
-                    IconButton(onClick = events::closeAll) { Icon(Icons.Rounded.Close, "すべて閉じる") }
+                    IconButton(onClick = uiState.listener::closeAll) { Icon(painterResource(Res.drawable.ic_close), "すべて閉じる") }
                 }
             }
             HorizontalDivider(color = colors.outlineVariant)
@@ -314,7 +314,7 @@ private fun ToolsButton(uiState: ImagePrepUiState, onClick: () -> Unit, modifier
     Tooltip(if (missing > 0) "外部ツール（一部の機能が使えません）" else "外部ツール", modifier = modifier) {
         IconButton(onClick = onClick) {
             BadgedBox(badge = { if (missing > 0) Badge(containerColor = AppTheme.extended.warning) }) {
-                Icon(Icons.Rounded.Extension, "外部ツール")
+                Icon(painterResource(Res.drawable.ic_extension), "外部ツール")
             }
         }
     }
@@ -335,7 +335,7 @@ private fun DropOverlay() {
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(Icons.Rounded.Download, null, tint = colors.onPrimaryContainer, modifier = Modifier.size(48.dp))
+                Icon(painterResource(Res.drawable.ic_download), null, tint = colors.onPrimaryContainer, modifier = Modifier.size(48.dp))
                 Spacer(Modifier.height(12.dp))
                 Text("ドロップして追加", style = MaterialTheme.typography.titleLarge, color = colors.onPrimaryContainer)
                 Spacer(Modifier.height(4.dp))

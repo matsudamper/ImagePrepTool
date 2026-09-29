@@ -21,11 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowForward
-import androidx.compose.material.icons.rounded.BrokenImage
-import androidx.compose.material.icons.rounded.ChevronLeft
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalIconButton
@@ -51,10 +46,16 @@ import androidx.compose.ui.unit.dp
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.presentation.ImageItem
 import com.imagepreptool.presentation.PreviewState
+import com.imagepreptool.resources.Res
+import com.imagepreptool.resources.ic_arrow_forward
+import com.imagepreptool.resources.ic_broken_image
+import com.imagepreptool.resources.ic_chevron_left
+import com.imagepreptool.resources.ic_chevron_right
 import com.imagepreptool.ui.components.Pill
 import com.imagepreptool.ui.components.SegmentedControl
 import com.imagepreptool.ui.theme.AppTheme
 import com.imagepreptool.ui.theme.MonoNumberStyle
+import org.jetbrains.compose.resources.painterResource
 
 private enum class PreviewMode(val label: String) { Processed("書き出し後"), Original("元画像") }
 
@@ -135,13 +136,13 @@ fun PreviewPane(
                 NavButton(
                     visible = hovered && index > 0,
                     onClick = { onMove(-1) },
-                    icon = { Icon(Icons.Rounded.ChevronLeft, contentDescription = "前の画像") },
+                    icon = { Icon(painterResource(Res.drawable.ic_chevron_left), contentDescription = "前の画像") },
                     modifier = Modifier.align(Alignment.CenterStart).padding(start = 10.dp),
                 )
                 NavButton(
                     visible = hovered && index < total - 1,
                     onClick = { onMove(1) },
-                    icon = { Icon(Icons.Rounded.ChevronRight, contentDescription = "次の画像") },
+                    icon = { Icon(painterResource(Res.drawable.ic_chevron_right), contentDescription = "次の画像") },
                     modifier = Modifier.align(Alignment.CenterEnd).padding(end = 10.dp),
                 )
             }
@@ -158,7 +159,7 @@ fun PreviewPane(
             if (original != null) {
                 Pill(original.toString())
                 if (output != null) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowForward, null, tint = ext.canvasContent, modifier = Modifier.size(16.dp))
+                    Icon(painterResource(Res.drawable.ic_arrow_forward), null, tint = ext.canvasContent, modifier = Modifier.size(16.dp))
                     Pill(
                         output.toString(),
                         container = MaterialTheme.colorScheme.primaryContainer,
@@ -220,7 +221,7 @@ private fun NavButton(visible: Boolean, onClick: () -> Unit, modifier: Modifier 
 private fun ErrorContent(message: String) {
     val ext = AppTheme.extended
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
-        Icon(Icons.Rounded.BrokenImage, null, tint = ext.canvasContent, modifier = Modifier.size(40.dp))
+        Icon(painterResource(Res.drawable.ic_broken_image), null, tint = ext.canvasContent, modifier = Modifier.size(40.dp))
         Spacer(Modifier.height(12.dp))
         Text("この画像は読み込めません", style = MaterialTheme.typography.titleSmall, color = ext.canvasContent)
         Spacer(Modifier.height(4.dp))
