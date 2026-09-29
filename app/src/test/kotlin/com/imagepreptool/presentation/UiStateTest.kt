@@ -28,7 +28,7 @@ class UiStateTest {
     @Test
     fun webpWithoutCwebpBlocksExport() {
         val state = ImagePrepViewModelState(
-            images = listOf(ImageItem(File("/photos/a.jpg"), included = true)),
+            images = listOf(ImageItem(File("/photos/a.jpg"))),
             options = EditOptions(outputFormat = OutputFormat.Webp),
             tools = ExternalTools.None,
         ).toUiState(listener)
@@ -38,16 +38,16 @@ class UiStateTest {
 
     @Test
     fun toolDependentExportWaitsForToolCheck() {
-        val heic = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.heic"), included = true)), tools = null).toUiState(listener)
+        val heic = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.heic"))), tools = null).toUiState(listener)
         assertFalse(heic.canExport)
-        val jpeg = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"), included = true)), tools = null).toUiState(listener)
+        val jpeg = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), tools = null).toUiState(listener)
         assertTrue(jpeg.canExport)
     }
 
     @Test
     fun invalidSizeInputBlocksExport() {
         val state = ImagePrepViewModelState(
-            images = listOf(ImageItem(File("/photos/a.jpg"), included = true)),
+            images = listOf(ImageItem(File("/photos/a.jpg"))),
             invalidInputs = setOf("longEdge"),
         ).toUiState(listener)
         assertFalse(state.canExport)
@@ -56,7 +56,7 @@ class UiStateTest {
 
     @Test
     fun exportIsDisabledWhileLoading() {
-        val loading = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"), included = true)), isLoading = true).toUiState(listener)
+        val loading = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), isLoading = true).toUiState(listener)
         assertFalse(loading.canExport)
     }
 
@@ -77,18 +77,18 @@ class UiStateTest {
     }
 
     @Test
-    fun heicWithoutDecoderCanBeExcluded() {
-        val state = ImagePrepViewModelState(
-            images = listOf(ImageItem(File("/photos/a.jpg"), included = true), ImageItem(File("/photos/b.heic"), included = true)),
-            tools = ExternalTools.None,
+    fun heicWithoutDecoderCanBeRemoved() {
+        val vm = ImagePrepViewModel(
+            settings = com.imagepreptool.data.InMemorySettingsStore(),
+            checkTools = { ExternalTools.None },
         )
-        assertTrue(state.toUiState(listener).notices.any { it.action == NoticeAction.ExcludeUnreadable })
-        val excluded = state.copy(
-            images = state.images.map { if (!state.canRead(it.file, ExternalTools.None)) it.copy(included = false) else it },
-        )
-        val ui = excluded.toUiState(listener)
+        vm.addFilesForTest(listOf(File("/photos/a.jpg"), File("/photos/b.heic")))
+        vm.setToolsForTest(ExternalTools.None)
+        assertTrue(vm.snapshotForTest().notices.any { it.action == NoticeAction.RemoveUnreadable })
+        vm.snapshotForTest().listener.removeUnreadable()
+        val ui = vm.snapshotForTest()
         assertTrue(ui.canExport)
-        assertEquals(1, ui.includedCount)
+        assertEquals(1, ui.exportCount)
         assertEquals(File("/photos/output"), ui.outputDirectory)
     }
 
@@ -108,17 +108,34 @@ class UiStateTest {
         assertEquals(files[1], state.focusedFile)
         assertEquals(setOf(files[1], files[2], files[3], files[4]), state.selectedFiles)
 
-        vm.snapshotForTest().listener.toggleIncluded(files[2])
-        state = vm.snapshotForTest()
-        assertEquals(listOf(true, false, false, false, false), state.images.map { it.included })
-
-        // 選択外の画像はその 1 枚だけ
-        vm.snapshotForTest().listener.toggleIncluded(files[0])
-        assertEquals(listOf(false, false, false, false, false), vm.snapshotForTest().images.map { it.included })
+        // 複数選択中は選択中の画像だけを書き出す
+        assertTrue(state.isExportingSelection)
+        assertEquals(4, state.exportCount)
 
         vm.snapshotForTest().listener.removeImage(files[3])
         state = vm.snapshotForTest()
         assertEquals(listOf(files[0]), state.images.map { it.file })
         assertEquals(files[0], state.focusedFile)
+        assertFalse(state.isExportingSelection)
+        assertEquals(1, state.exportCount)
+    }
+
+    @Test
+    fun undoRestoresRemovedImagesAtOriginalPositions() {
+        val files = (1..5).map { File("/photos/$it.jpg") }
+        val vm = ImagePrepViewModel(
+            settings = com.imagepreptool.data.InMemorySettingsStore(),
+            checkTools = { ExternalTools.None },
+        )
+        vm.addFilesForTest(files)
+        vm.snapshotForTest().listener.clickImage(files[1], SelectMode.Single)
+        vm.snapshotForTest().listener.clickImage(files[3], SelectMode.Toggle)
+        vm.snapshotForTest().listener.removeSelection()
+        assertEquals(listOf(files[0], files[2], files[4]), vm.snapshotForTest().images.map { it.file })
+
+        vm.snapshotForTest().listener.undoRemoval()
+        val state = vm.snapshotForTest()
+        assertEquals(files, state.images.map { it.file })
+        assertEquals(setOf(files[1], files[3]), state.selectedFiles)
     }
 }

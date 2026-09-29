@@ -22,8 +22,10 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
@@ -83,7 +85,15 @@ fun App(
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { message ->
             snackbar.currentSnackbarData?.dismiss()
-            snackbar.showSnackbar(message)
+            // collect を止めないよう、表示と結果待ちは別のコルーチンで行う
+            launch {
+                if (message.canUndoRemoval) {
+                    val result = snackbar.showSnackbar(message.text, actionLabel = "元に戻す", duration = SnackbarDuration.Long)
+                    if (result == SnackbarResult.ActionPerformed) latestUiState.listener.undoRemoval()
+                } else {
+                    snackbar.showSnackbar(message.text)
+                }
+            }
         }
     }
 
@@ -214,18 +224,15 @@ private fun Workspace(
         Row(Modifier.weight(1f).fillMaxWidth()) {
             ImageListPanel(
                 images = uiState.images,
-                includedCount = uiState.includedCount,
                 focusedFile = uiState.focusedFile,
                 selectedFiles = uiState.selectedFiles,
                 tools = uiState.tools,
                 onClickImage = uiState.listener::clickImage,
-                onToggle = uiState.listener::toggleIncluded,
-                onSetAll = uiState.listener::setAllIncluded,
-                onSetSelectionInclusion = uiState.listener::setSelectionIncluded,
+                onRemoveSelection = uiState.listener::removeSelection,
+                onUndoRemoval = uiState.listener::undoRemoval,
                 onSelectAll = uiState.listener::selectAll,
                 onClearSelection = uiState.listener::clearSelection,
                 onMoveFocus = uiState.listener::moveFocus,
-                onToggleCurrentInclusion = uiState.listener::toggleFocusedIncluded,
                 onRemove = uiState.listener::removeImage,
                 onReveal = { file -> DesktopDialogs.revealFile(file)?.let(actions.showMessage) },
                 modifier = Modifier.width(312.dp),
@@ -238,7 +245,6 @@ private fun Workspace(
                 index = index,
                 total = uiState.images.size,
                 options = uiState.options,
-                onToggleInclusion = uiState.listener::toggleFocusedIncluded,
                 onMove = uiState.listener::moveFocus,
                 modifier = Modifier.weight(1f),
             )
@@ -251,7 +257,8 @@ private fun Workspace(
                 outputDirectory = uiState.outputDirectory,
                 isCustomOutputDirectory = uiState.isCustomOutputDirectory,
                 notices = uiState.notices,
-                includedCount = uiState.includedCount,
+                exportCount = uiState.exportCount,
+                isExportingSelection = uiState.isExportingSelection,
                 canExport = uiState.canExport,
                 onOptionsChange = uiState.listener::updateOptions,
                 onInputValidityChange = uiState.listener::setInputValid,
@@ -262,7 +269,7 @@ private fun Workspace(
                 onResetOutput = uiState.listener::resetOutputDirectory,
                 onNoticeAction = { action ->
                     when (action) {
-                        NoticeAction.ExcludeUnreadable -> uiState.listener.excludeUnreadable()
+                        NoticeAction.RemoveUnreadable -> uiState.listener.removeUnreadable()
                         NoticeAction.ShowTools -> onShowTools()
                     }
                 },
