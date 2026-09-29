@@ -185,7 +185,7 @@ jobs:
           fi
           installer_row=""
           if [ -n "$INSTALLER_ARTIFACT_URL" ]; then
-            installer_row="| 🐙 GitHub Artifacts (installer) | exe | [Download](${INSTALLER_ARTIFACT_URL}) | - |"
+            installer_row="| 🐙 GitHub Artifacts (installer) | zip | [Download](${INSTALLER_ARTIFACT_URL}) | - |"
           fi
 
           echo "failed=false" >> "$GITHUB_OUTPUT"
@@ -193,7 +193,7 @@ jobs:
             echo "message<<EOF"
             echo "✅ **Portable build is ready!**"
             echo ""
-            echo "| Storage | 形式 | Download Link | QR Code |"
+            echo "| Storage | 圧縮方式 | Download Link | QR Code |"
             echo "| :--- | :--- | :--- | :--- |"
             echo "| 🐙 GitHub Artifacts (portable) | zip | [Download](${PORTABLE_ARTIFACT_URL}) | [View](${PORTABLE_QR_URL}) |"
             echo "${s3_row}"
