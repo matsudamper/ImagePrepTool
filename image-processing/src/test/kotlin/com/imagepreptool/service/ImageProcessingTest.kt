@@ -1,5 +1,6 @@
 package com.imagepreptool.service
 
+import com.imagepreptool.model.CaptionField
 import com.imagepreptool.model.CaptionStyle
 import com.imagepreptool.model.ConflictPolicy
 import com.imagepreptool.model.EditOptions
@@ -71,6 +72,32 @@ class ImageProcessingTest {
     }
 
     @Test
+    fun captionTemplateSkipsMissingFields() {
+        val fields = mapOf(
+            CaptionField.Camera to "SONY ILCE-7M4",
+            CaptionField.Aperture to "f/2.8",
+            CaptionField.Iso to "ISO 400",
+        )
+        assertEquals(
+            "SONY ILCE-7M4\nf/2.8  ·  ISO 400",
+            CaptionTemplate.render("{camera}  ·  {lens}\n{focal}  ·  {aperture}  ·  {shutter}  ·  {iso}", fields),
+        )
+        // 項目がすべて空の行は消え、項目の無い行（固定テキスト）は残る
+        assertEquals("© Me", CaptionTemplate.render("{lens}\n© Me", fields))
+        // 未知の項目はそのまま
+        assertEquals("{unknown} f/2.8", CaptionTemplate.render("{unknown} {aperture}", fields))
+        assertEquals("", CaptionTemplate.render("{lens}", fields))
+        assertEquals(listOf(0..7), CaptionTemplate.tokenRanges("{camera} {nope}"))
+    }
+
+    @Test
+    fun exposureBiasFormatting() {
+        assertEquals("+0.7EV", ExifService.formatExposureBias(0.67))
+        assertEquals("-1EV", ExifService.formatExposureBias(-1.0))
+        assertEquals("±0EV", ExifService.formatExposureBias(0.0))
+    }
+
+    @Test
     fun planKeepsOriginalsSafeAndAvoidsBatchCollisions() {
         val a = writeImage("photo.jpg")
         val b = writeImage("photo.png")
@@ -102,8 +129,7 @@ class ImageProcessingTest {
             longEdge = 600,
             outputFormat = OutputFormat.Jpeg,
             captionEnabled = true,
-            captionSource = com.imagepreptool.model.CaptionSource.Custom,
-            customCaption = "テスト caption",
+            captionTemplate = "テスト caption\n{filename}",
             captionStyle = CaptionStyle.Shadow,
         )
         val out = File(dir, "out")

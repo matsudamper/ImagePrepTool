@@ -5,12 +5,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.imagepreptool.data.PreferencesSettingsStore
 import com.imagepreptool.data.SettingsStore
-import com.imagepreptool.model.CaptionSource
+import com.imagepreptool.model.CaptionField
 import com.imagepreptool.model.ConflictPolicy
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.ProcessResult
+import com.imagepreptool.service.CaptionTemplate
 import com.imagepreptool.service.ExifService
 import com.imagepreptool.service.ExternalToolChecker
 import com.imagepreptool.service.ImageLoader
@@ -107,6 +108,8 @@ class ImagePrepViewModel(
                     images = files.map(::ImageItem),
                     sourceFolder = dir,
                     focusedFile = files.first(),
+                    selection = setOf(files.first()),
+                    anchor = files.first(),
                 )
             }
             rememberRecent(dir)
@@ -143,22 +146,38 @@ class ImagePrepViewModel(
         }
     }
 
-    fun closeAll() {
-        if (exportJob?.isActive == true) return
-        mutate { it.copy(images = emptyList(), sourceFolder = null, focusedFile = null, export = ExportState.Idle) }
+    internal fun snapshotForTest(): ImagePrepUiState = viewModelStateFlow.value.toUiState()
+
+    internal fun addFilesForTest(files: List<File>) {
+        mutate { it.copy(images = files.map(::ImageItem), focusedFile = files.firstOrNull()) }
     }
 
+    fun closeAll() {
+        if (exportJob?.isActive == true) return
+        mutate { it.copy(images = emptyList(), sourceFolder = null, focusedFile = null, selection = emptySet(), anchor = null, export = ExportState.Idle) }
+    }
+
+    /** [file] が複数選択に含まれていれば選択中の全画像を一覧から外す */
     fun removeImage(file: File) {
         mutate { state ->
+            val targets = state.targetsFor(file)
             val index = state.images.indexOfFirst { it.file == file }
             if (index < 0) return@mutate state
-            val images = state.images.filterIndexed { i, _ -> i != index }
-            val focused = if (state.focusedFile == file) {
-                images.getOrNull(index.coerceAtMost(images.lastIndex))?.file
+            val images = state.images.filter { it.file !in targets }
+            val focused = if (state.focusedFile in targets) {
+                // 消した位置の次にある画像をプレビューする
+                val after = state.images.drop(index).firstOrNull { it.file !in targets }
+                (after ?: images.lastOrNull())?.file
             } else {
                 state.focusedFile
             }
-            state.copy(images = images, focusedFile = focused, sourceFolder = if (images.isEmpty()) null else state.sourceFolder)
+            state.copy(
+                images = images,
+                focusedFile = focused,
+                selection = setOfNotNull(focused),
+                anchor = focused,
+                sourceFolder = if (images.isEmpty()) null else state.sourceFolder,
+            )
         }
     }
 
@@ -183,26 +202,71 @@ class ImagePrepViewModel(
     // region 選択とフォーカス
 
     fun focus(file: File) {
-        mutate { it.copy(focusedFile = file) }
+        clickImage(file, SelectMode.Single)
+    }
+
+    /**
+     * 一覧でのクリック。Single はプレビューも切り替える。
+     * Toggle（Ctrl）と Range（Shift）は選択だけを変え、プレビュー中の画像はそのまま。
+     */
+    fun clickImage(file: File, mode: SelectMode) {
+        mutate { state ->
+            when (mode) {
+                SelectMode.Single -> state.copy(focusedFile = file, selection = setOf(file), anchor = file)
+                SelectMode.Toggle -> {
+                    val base = state.effectiveSelection
+                    state.copy(
+                        selection = if (file in base) base - file else base + file,
+                        anchor = file,
+                        focusedFile = state.focusedFile ?: file,
+                    )
+                }
+                SelectMode.Range -> {
+                    val from = state.images.indexOfFirst { it.file == (state.anchor ?: state.focusedFile) }
+                    val to = state.images.indexOfFirst { it.file == file }
+                    if (from < 0 || to < 0) return@mutate state.copy(focusedFile = file, selection = setOf(file), anchor = file)
+                    val range = state.images.subList(minOf(from, to), maxOf(from, to) + 1).map { it.file }
+                    state.copy(selection = range.toSet(), focusedFile = state.focusedFile ?: file)
+                }
+            }
+        }
+    }
+
+    fun selectAll() {
+        mutate { state -> state.copy(selection = state.images.map { it.file }.toSet()) }
+    }
+
+    fun clearSelection() {
+        mutate { state -> state.copy(selection = setOfNotNull(state.focusedFile), anchor = state.focusedFile) }
     }
 
     fun moveFocus(delta: Int) {
         mutate { state ->
             if (state.images.isEmpty()) return@mutate state
             val current = state.images.indexOfFirst { it.file == state.focusedFile }.coerceAtLeast(0)
-            val next = (current + delta).coerceIn(0, state.images.lastIndex)
-            state.copy(focusedFile = state.images[next].file)
+            val next = state.images[(current + delta).coerceIn(0, state.images.lastIndex)].file
+            state.copy(focusedFile = next, selection = setOf(next), anchor = next)
         }
     }
 
+    /** [file] が複数選択に含まれていれば選択中の全画像を、そうでなければ [file] だけを切り替える */
     fun toggleIncluded(file: File) {
         mutate { state ->
-            state.copy(images = state.images.map { if (it.file == file) it.copy(included = !it.included) else it })
+            val targets = state.targetsFor(file)
+            val included = !(state.images.firstOrNull { it.file == file }?.included ?: true)
+            state.copy(images = state.images.map { if (it.file in targets) it.copy(included = included) else it })
         }
     }
 
     fun toggleFocusedIncluded() {
         viewModelStateFlow.value.focusedFile?.let(::toggleIncluded)
+    }
+
+    fun setSelectionIncluded(included: Boolean) {
+        mutate { state ->
+            val targets = state.effectiveSelection
+            state.copy(images = state.images.map { if (it.file in targets) it.copy(included = included) else it })
+        }
     }
 
     fun setAllIncluded(included: Boolean) {
@@ -332,7 +396,7 @@ class ImagePrepViewModel(
 
     // region プレビュー
 
-    private class PreviewSource(val loaded: LoadedImage, val exifCaption: String?)
+    private class PreviewSource(val loaded: LoadedImage, val fields: Map<CaptionField, String>)
 
     private fun observePreview() {
         viewModelScope.launch {
@@ -360,7 +424,7 @@ class ImagePrepViewModel(
         val cacheKey = "${file.absolutePath}:${file.lastModified()}"
         val source = previewCache[cacheKey] ?: try {
             withContext(Dispatchers.IO) {
-                PreviewSource(ImageLoader.load(file, tools, maxDimension = PREVIEW_MAX), ExifService.buildCaption(file))
+                PreviewSource(ImageLoader.load(file, tools, maxDimension = PREVIEW_MAX), ExifService.readFields(file))
             }.also { previewCache[cacheKey] = it }
         } catch (e: CancellationException) {
             throw e
@@ -374,7 +438,7 @@ class ImagePrepViewModel(
                 preview = it.preview.copy(
                     original = original,
                     originalSize = source.loaded.size,
-                    exifCaption = source.exifCaption,
+                    captionFields = source.fields,
                 ),
             )
         }
@@ -386,12 +450,10 @@ class ImagePrepViewModel(
             val image = source.loaded.image
             val renderSize = Resizer.fitWithin(outputSize, image.width, image.height)
             val processor = ImageProcessor(tools)
-            val caption = if (!options.captionEnabled) {
-                null
-            } else if (options.captionSource == CaptionSource.Exif) {
-                source.exifCaption
+            val caption = if (options.captionEnabled) {
+                CaptionTemplate.render(options.captionTemplate, source.fields).takeIf { it.isNotBlank() }
             } else {
-                processor.caption(file, options)
+                null
             }
             val bitmap = withContext(Dispatchers.Default) {
                 processor.render(image, caption, options, renderSize).toComposeImageBitmap()
@@ -437,6 +499,9 @@ internal data class ImagePrepViewModelState(
     val images: List<ImageItem> = emptyList(),
     val sourceFolder: File? = null,
     val focusedFile: File? = null,
+    /** 一覧で選択中の画像（Shift / Ctrl で複数）。プレビューは [focusedFile] */
+    val selection: Set<File> = emptySet(),
+    val anchor: File? = null,
     val options: EditOptions = EditOptions(),
     val customOutputDir: File? = null,
     val tools: ExternalTools? = null,
@@ -447,6 +512,11 @@ internal data class ImagePrepViewModelState(
 ) {
     val defaultOutputDir: File?
         get() = (sourceFolder ?: images.firstOrNull()?.file?.absoluteFile?.parentFile)?.let { File(it, "output") }
+
+    val effectiveSelection: Set<File>
+        get() = selection.ifEmpty { setOfNotNull(focusedFile) }
+
+    fun targetsFor(file: File): Set<File> = effectiveSelection.takeIf { file in it } ?: setOf(file)
 
     fun canRead(file: File, tools: ExternalTools): Boolean = !ImageLoader.isHeif(file) || tools.heifDecoder != null
 }
@@ -477,6 +547,7 @@ internal fun ImagePrepViewModelState.toUiState(): ImagePrepUiState {
         images = images,
         includedCount = included.size,
         focusedFile = focusedFile,
+        selectedFiles = effectiveSelection,
         sourceTitle = folder?.name?.ifEmpty { folder.path } ?: if (images.isEmpty()) null else "追加した画像",
         sourcePath = folder?.absolutePath,
         options = options,

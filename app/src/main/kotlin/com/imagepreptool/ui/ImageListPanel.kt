@@ -1,5 +1,16 @@
 package com.imagepreptool.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.onClick
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.TextButton
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.pointer.isCtrlPressed
+import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isShiftPressed
+import com.imagepreptool.presentation.SelectMode
 import androidx.compose.foundation.ContextMenuArea
 import androidx.compose.foundation.ContextMenuItem
 import androidx.compose.foundation.Image
@@ -63,15 +74,20 @@ import com.imagepreptool.ui.components.Tooltip
 import com.imagepreptool.ui.theme.MonoNumberStyle
 import java.io.File
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ImageListPanel(
     images: List<ImageItem>,
     includedCount: Int,
     focusedFile: File?,
+    selectedFiles: Set<File>,
     tools: ExternalTools?,
-    onFocus: (File) -> Unit,
+    onClickImage: (File, SelectMode) -> Unit,
     onToggle: (File) -> Unit,
     onSetAll: (Boolean) -> Unit,
+    onSetSelectionIncluded: (Boolean) -> Unit,
+    onSelectAll: () -> Unit,
+    onClearSelection: () -> Unit,
     onMoveFocus: (Int) -> Unit,
     onToggleFocused: () -> Unit,
     onRemove: (File) -> Unit,
@@ -94,24 +110,34 @@ fun ImageListPanel(
     }
 
     Column(modifier = modifier.fillMaxHeight().background(colors.surface)) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(48.dp).padding(start = 6.dp, end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            val toggleState = when (includedCount) {
-                0 -> ToggleableState.Off
-                images.size -> ToggleableState.On
-                else -> ToggleableState.Indeterminate
-            }
-            Tooltip(if (toggleState == ToggleableState.On) "すべて外す" else "すべて選択") {
-                TriStateCheckbox(state = toggleState, onClick = { onSetAll(toggleState != ToggleableState.On) })
-            }
-            Text("画像", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
-            Text(
-                "$includedCount / ${images.size} 枚",
-                style = MaterialTheme.typography.labelMedium.merge(MonoNumberStyle),
-                color = colors.onSurfaceVariant,
+        val multiSelected = selectedFiles.size > 1
+        if (multiSelected) {
+            SelectionBar(
+                count = selectedFiles.size,
+                onInclude = { onSetSelectionIncluded(true) },
+                onExclude = { onSetSelectionIncluded(false) },
+                onClear = onClearSelection,
             )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(48.dp).padding(start = 6.dp, end = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val toggleState = when (includedCount) {
+                    0 -> ToggleableState.Off
+                    images.size -> ToggleableState.On
+                    else -> ToggleableState.Indeterminate
+                }
+                Tooltip(if (toggleState == ToggleableState.On) "すべて外す" else "すべて含める") {
+                    TriStateCheckbox(state = toggleState, onClick = { onSetAll(toggleState != ToggleableState.On) })
+                }
+                Text("画像", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Text(
+                    "$includedCount / ${images.size} 枚",
+                    style = MaterialTheme.typography.labelMedium.merge(MonoNumberStyle),
+                    color = colors.onSurfaceVariant,
+                )
+            }
         }
 
         LazyVerticalGrid(
@@ -133,6 +159,8 @@ fun ImageListPanel(
                         Key.DirectionDown -> onMoveFocus(columns)
                         Key.Spacebar -> onToggleFocused()
                         Key.Delete -> focusedFile?.let(onRemove)
+                        Key.Escape -> onClearSelection()
+                        Key.A -> if (event.isCtrlPressed || event.isMetaPressed) onSelectAll() else return@onPreviewKeyEvent false
                         else -> return@onPreviewKeyEvent false
                     }
                     true
@@ -140,22 +168,26 @@ fun ImageListPanel(
                 .focusable(),
         ) {
             items(images, key = { it.file.absolutePath }) { item ->
+                // 複数選択中の画像に対する操作は選択中の全画像に反映される
+                val inGroup = multiSelected && item.file in selectedFiles
+                val prefix = if (inGroup) "選択中の ${selectedFiles.size} 枚を" else ""
                 ContextMenuArea(
                     items = {
                         listOf(
-                            ContextMenuItem(if (item.included) "書き出しから外す" else "書き出しに含める") { onToggle(item.file) },
+                            ContextMenuItem(prefix + if (item.included) "書き出しから外す" else "書き出しに含める") { onToggle(item.file) },
                             ContextMenuItem("エクスプローラーで表示") { onReveal(item.file) },
-                            ContextMenuItem("一覧から削除") { onRemove(item.file) },
+                            ContextMenuItem(prefix + "一覧から削除") { onRemove(item.file) },
                         )
                     },
                 ) {
                     Thumbnail(
                         item = item,
                         focused = item.file == focusedFile,
+                        selected = inGroup,
                         tools = tools,
-                        onClick = {
+                        onClick = { mode ->
                             focusRequester.requestFocus()
-                            onFocus(item.file)
+                            onClickImage(item.file, mode)
                         },
                         onToggle = { onToggle(item.file) },
                     )
@@ -166,11 +198,46 @@ fun ImageListPanel(
 }
 
 @Composable
+private fun SelectionBar(count: Int, onInclude: () -> Unit, onExclude: () -> Unit, onClear: () -> Unit) {
+    val colors = MaterialTheme.colorScheme
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(colors.primaryContainer)
+            .padding(start = 4.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Tooltip("選択を解除 (Esc)") {
+            IconButton(onClick = onClear, modifier = Modifier.size(32.dp)) {
+                Icon(Icons.Rounded.Close, "選択を解除", tint = colors.onPrimaryContainer, modifier = Modifier.size(18.dp))
+            }
+        }
+        Text(
+            "$count 枚を選択中",
+            style = MaterialTheme.typography.titleSmall.merge(MonoNumberStyle),
+            color = colors.onPrimaryContainer,
+            modifier = Modifier.weight(1f).padding(start = 2.dp),
+        )
+        TextButton(onClick = onInclude, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(30.dp)) {
+            Text("含める", style = MaterialTheme.typography.labelLarge)
+        }
+        TextButton(onClick = onExclude, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(30.dp)) {
+            Text("外す", style = MaterialTheme.typography.labelLarge)
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun Thumbnail(
     item: ImageItem,
     focused: Boolean,
+    selected: Boolean,
     tools: ExternalTools?,
-    onClick: () -> Unit,
+    onClick: (SelectMode) -> Unit,
     onToggle: () -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -182,7 +249,9 @@ private fun Thumbnail(
     Column(
         modifier = Modifier
             .hoverable(interaction)
-            .clickable(interactionSource = interaction, indication = null, onClick = onClick),
+            .onClick(keyboardModifiers = { isShiftPressed }) { onClick(SelectMode.Range) }
+            .onClick(keyboardModifiers = { isCtrlPressed || isMetaPressed }) { onClick(SelectMode.Toggle) }
+            .onClick(keyboardModifiers = { !isShiftPressed && !isCtrlPressed && !isMetaPressed }) { onClick(SelectMode.Single) },
     ) {
         Box(
             modifier = Modifier
@@ -191,9 +260,10 @@ private fun Thumbnail(
                 .clip(shape)
                 .background(colors.surfaceContainerHigh)
                 .border(
-                    width = if (focused) 2.5.dp else 1.dp,
+                    width = if (focused || selected) 2.5.dp else 1.dp,
                     color = when {
                         focused -> colors.primary
+                        selected -> colors.primary.copy(alpha = 0.55f)
                         hovered -> colors.outline
                         else -> colors.outlineVariant
                     },
@@ -208,7 +278,7 @@ private fun Thumbnail(
                     bitmap = state.bitmap,
                     contentDescription = item.file.name,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize().padding(if (focused) 2.5.dp else 1.dp).clip(RoundedCornerShape(8.dp)).alpha(dim),
+                    modifier = Modifier.fillMaxSize().padding(if (focused || selected) 2.5.dp else 1.dp).clip(RoundedCornerShape(8.dp)).alpha(dim),
                 )
                 is ThumbnailState.Failed -> Tooltip(state.reason) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.alpha(dim)) {
@@ -218,9 +288,12 @@ private fun Thumbnail(
                     }
                 }
             }
+            if (selected) {
+                Box(Modifier.fillMaxSize().background(colors.primary.copy(alpha = 0.18f)))
+            }
             IncludeBadge(
                 included = item.included,
-                visible = hovered || !item.included || focused,
+                visible = hovered || !item.included || focused || selected,
                 onToggle = onToggle,
                 modifier = Modifier.align(Alignment.TopStart).padding(6.dp),
             )

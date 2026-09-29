@@ -1,6 +1,5 @@
 package com.imagepreptool.service
 
-import com.imagepreptool.model.CaptionSource
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.ImageSize
@@ -12,10 +11,7 @@ class ImageProcessor(private val tools: ExternalTools) {
 
     fun caption(source: File, options: EditOptions): String? {
         if (!options.captionEnabled) return null
-        return when (options.captionSource) {
-            CaptionSource.Custom -> options.customCaption.trim().takeIf { it.isNotEmpty() }
-            CaptionSource.Exif -> ExifService.buildCaption(source)
-        }
+        return CaptionTemplate.render(options.captionTemplate, ExifService.readFields(source)).takeIf { it.isNotBlank() }
     }
 
     /** リサイズとキャプション描画。[image] は変更しない */

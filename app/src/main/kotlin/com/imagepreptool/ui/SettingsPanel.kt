@@ -1,6 +1,26 @@
 package com.imagepreptool.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
+import com.imagepreptool.service.CaptionTemplate
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -40,7 +60,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.imagepreptool.model.CaptionPosition
-import com.imagepreptool.model.CaptionSource
+import com.imagepreptool.model.CaptionField
 import com.imagepreptool.model.CaptionStyle
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.OutputFormat
@@ -62,7 +82,7 @@ import kotlin.math.roundToInt
 @Composable
 fun SettingsPanel(
     options: EditOptions,
-    exifCaption: String?,
+    captionFields: Map<CaptionField, String>,
     hasFocusedImage: Boolean,
     sampleFile: File?,
     outputDirectory: File?,
@@ -84,7 +104,7 @@ fun SettingsPanel(
             HorizontalDivider(color = colors.outlineVariant)
             FormatSection(options, onOptionsChange)
             HorizontalDivider(color = colors.outlineVariant)
-            CaptionSection(options, exifCaption, hasFocusedImage, onOptionsChange)
+            CaptionSection(options, captionFields, hasFocusedImage, onOptionsChange)
             HorizontalDivider(color = colors.outlineVariant)
             OutputSection(options, sampleFile, outputDirectory, isCustomOutputDirectory, onOptionsChange, onChooseOutput, onResetOutput)
         }
@@ -209,7 +229,7 @@ private fun FormatSection(options: EditOptions, onChange: ((EditOptions) -> Edit
 @Composable
 private fun CaptionSection(
     options: EditOptions,
-    exifCaption: String?,
+    fields: Map<CaptionField, String>,
     hasFocusedImage: Boolean,
     onChange: ((EditOptions) -> EditOptions) -> Unit,
 ) {
@@ -227,39 +247,12 @@ private fun CaptionSection(
             Hint("画像の隅に撮影情報やクレジットを書き込めます。")
             return@SettingsSection
         }
-        SegmentedControl(
-            options = CaptionSource.entries,
-            selected = options.captionSource,
-            onSelect = { source -> onChange { it.copy(captionSource = source) } },
-            label = { it.label },
+        CaptionTemplateEditor(
+            template = options.captionTemplate,
+            fields = fields,
+            hasFocusedImage = hasFocusedImage,
+            onTemplateChange = { text -> onChange { it.copy(captionTemplate = text) } },
         )
-        when (options.captionSource) {
-            CaptionSource.Exif -> Surface(
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                shape = MaterialTheme.shapes.small,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-                    FieldLabel("選択中の画像")
-                    Spacer(Modifier.height(2.dp))
-                    Text(
-                        when {
-                            !hasFocusedImage -> "—"
-                            exifCaption != null -> exifCaption
-                            else -> "撮影情報がありません（この画像には書き込まれません）"
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (exifCaption != null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            CaptionSource.Custom -> CompactTextField(
-                value = options.customCaption,
-                onValueChange = { text -> onChange { it.copy(customCaption = text) } },
-                placeholder = "例: © 2026 Your Name",
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             Column {
                 FieldLabel("位置")
@@ -284,6 +277,115 @@ private fun CaptionSection(
             valueRange = EditOptions.MIN_CAPTION_PERCENT..EditOptions.MAX_CAPTION_PERCENT,
             onValueChange = { v -> onChange { it.copy(captionSizePercent = (v * 10).roundToInt() / 10f) } },
         )
+    }
+}
+
+/** 撮影情報の項目を挿入できる複数行のテンプレート入力欄 */
+@Composable
+private fun CaptionTemplateEditor(
+    template: String,
+    fields: Map<CaptionField, String>,
+    hasFocusedImage: Boolean,
+    onTemplateChange: (String) -> Unit,
+) {
+    val colors = MaterialTheme.colorScheme
+    var value by remember { mutableStateOf(TextFieldValue(template, TextRange(template.length))) }
+    LaunchedEffect(template) {
+        if (value.text != template) value = TextFieldValue(template, TextRange(template.length))
+    }
+    val focusRequester = remember { FocusRequester() }
+    var menuOpen by remember { mutableStateOf(false) }
+
+    fun insert(field: CaptionField) {
+        val start = minOf(value.selection.start, value.selection.end)
+        val end = maxOf(value.selection.start, value.selection.end)
+        val text = value.text.substring(0, start) + field.token + value.text.substring(end)
+        value = TextFieldValue(text, TextRange(start + field.token.length))
+        onTemplateChange(text)
+    }
+
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            FieldLabel("テキスト", Modifier.weight(1f))
+            Box {
+                TextButton(
+                    onClick = { menuOpen = true },
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                    modifier = Modifier.height(28.dp),
+                ) {
+                    Icon(Icons.Rounded.Add, null, modifier = Modifier.size(16.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("撮影情報を挿入", style = MaterialTheme.typography.labelMedium)
+                }
+                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                    CaptionField.entries.forEach { field ->
+                        DropdownMenuItem(
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.width(300.dp)) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(field.label, style = MaterialTheme.typography.bodyMedium)
+                                        Text(field.token, style = MaterialTheme.typography.labelSmall.merge(MonoNumberStyle), color = colors.primary)
+                                    }
+                                    Text(
+                                        fields[field] ?: if (hasFocusedImage) "なし" else "",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = colors.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.widthIn(max = 150.dp),
+                                    )
+                                }
+                            },
+                            onClick = {
+                                menuOpen = false
+                                insert(field)
+                                focusRequester.requestFocus()
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        val tokenStyle = SpanStyle(color = colors.primary, background = colors.primaryContainer.copy(alpha = 0.6f))
+        BasicTextField(
+            value = value,
+            onValueChange = { new ->
+                value = new
+                if (new.text != template) onTemplateChange(new.text)
+            },
+            textStyle = MaterialTheme.typography.bodyMedium.merge(MonoNumberStyle).copy(color = colors.onSurface),
+            cursorBrush = SolidColor(colors.primary),
+            minLines = 3,
+            maxLines = 8,
+            visualTransformation = { text ->
+                val styled = buildAnnotatedString {
+                    append(text.text)
+                    CaptionTemplate.tokenRanges(text.text).forEach { range -> addStyle(tokenStyle, range.first, range.last + 1) }
+                }
+                TransformedText(styled, OffsetMapping.Identity)
+            },
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+            decorationBox = { inner ->
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.small)
+                        .background(colors.surface)
+                        .border(1.dp, colors.outline, MaterialTheme.shapes.small)
+                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                ) { inner() }
+            },
+        )
+        Spacer(Modifier.height(6.dp))
+        Hint("{…} は画像ごとの撮影情報に置き換わります。情報が無い項目は省略されます。Enter で改行できます。")
+        if (template != EditOptions.DEFAULT_CAPTION_TEMPLATE) {
+            TextButton(
+                onClick = { onTemplateChange(EditOptions.DEFAULT_CAPTION_TEMPLATE) },
+                contentPadding = PaddingValues(horizontal = 4.dp),
+                modifier = Modifier.height(28.dp),
+            ) { Text("既定のテンプレートに戻す", style = MaterialTheme.typography.labelMedium) }
+        }
     }
 }
 

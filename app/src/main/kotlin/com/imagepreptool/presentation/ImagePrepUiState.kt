@@ -1,6 +1,7 @@
 package com.imagepreptool.presentation
 
 import androidx.compose.ui.graphics.ImageBitmap
+import com.imagepreptool.model.CaptionField
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.ImageSize
@@ -8,6 +9,8 @@ import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.service.PlannedOutput
 import java.io.File
+
+enum class SelectMode { Single, Toggle, Range }
 
 data class ImageItem(
     val file: File,
@@ -21,8 +24,8 @@ data class PreviewState(
     val originalSize: ImageSize? = null,
     val outputSize: ImageSize? = null,
     val outputFormat: OutputFormat? = null,
-    /** この画像の EXIF から作ったキャプション（無ければ null） */
-    val exifCaption: String? = null,
+    /** この画像の撮影情報（テンプレートの項目ごと） */
+    val captionFields: Map<CaptionField, String> = emptyMap(),
     val loading: Boolean = false,
     val error: String? = null,
 )
@@ -68,6 +71,7 @@ data class ImagePrepUiState(
     val images: List<ImageItem> = emptyList(),
     val includedCount: Int = 0,
     val focusedFile: File? = null,
+    val selectedFiles: Set<File> = emptySet(),
     /** 一覧の見出し（フォルダ名など） */
     val sourceTitle: String? = null,
     val sourcePath: String? = null,

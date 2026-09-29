@@ -15,9 +15,30 @@ enum class OutputFormat(val label: String, val extension: String, val lossy: Boo
     Webp("WebP", "webp", lossy = true),
 }
 
-enum class CaptionSource(val label: String) {
-    Exif("撮影情報"),
-    Custom("テキスト"),
+/** キャプションのテンプレートに埋め込める撮影情報 */
+enum class CaptionField(val key: String, val label: String) {
+    Camera("camera", "カメラ"),
+    Make("make", "メーカー"),
+    Model("model", "機種"),
+    Lens("lens", "レンズ"),
+    FocalLength("focal", "焦点距離"),
+    FocalLength35("focal35", "35mm 換算焦点距離"),
+    Aperture("aperture", "F 値"),
+    Shutter("shutter", "シャッター速度"),
+    Iso("iso", "ISO 感度"),
+    ExposureBias("ev", "露出補正"),
+    Date("date", "撮影日"),
+    DateTime("datetime", "撮影日時"),
+    Artist("artist", "撮影者"),
+    Copyright("copyright", "著作権"),
+    FileName("filename", "ファイル名"),
+    ;
+
+    val token: String get() = "{$key}"
+
+    companion object {
+        fun fromKey(key: String): CaptionField? = entries.firstOrNull { it.key == key }
+    }
 }
 
 enum class CaptionPosition(val label: String) {
@@ -46,8 +67,8 @@ data class EditOptions(
     val outputFormat: OutputFormat = OutputFormat.Jpeg,
     val quality: Int = 85,
     val captionEnabled: Boolean = true,
-    val captionSource: CaptionSource = CaptionSource.Exif,
-    val customCaption: String = "",
+    /** `{camera}` などの項目を撮影情報に置き換える。改行で複数行にできる */
+    val captionTemplate: String = DEFAULT_CAPTION_TEMPLATE,
     val captionPosition: CaptionPosition = CaptionPosition.BottomRight,
     /** 画像の短辺に対する文字の高さ（%） */
     val captionSizePercent: Float = 2.5f,
@@ -59,6 +80,7 @@ data class EditOptions(
         const val MAX_DIMENSION = 16384
         const val MIN_CAPTION_PERCENT = 1f
         const val MAX_CAPTION_PERCENT = 8f
+        const val DEFAULT_CAPTION_TEMPLATE = "{camera}  ·  {lens}\n{focal}  ·  {aperture}  ·  {shutter}  ·  {iso}"
     }
 }
 

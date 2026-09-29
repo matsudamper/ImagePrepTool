@@ -29,8 +29,7 @@ class PreferencesSettingsStore(
                 outputFormat = enumOr(prefs.get("outputFormat", null), d.outputFormat),
                 quality = prefs.getInt("quality", d.quality).coerceIn(1, 100),
                 captionEnabled = prefs.getBoolean("captionEnabled", d.captionEnabled),
-                captionSource = enumOr(prefs.get("captionSource", null), d.captionSource),
-                customCaption = prefs.get("customCaption", d.customCaption),
+                captionTemplate = loadCaptionTemplate(d.captionTemplate),
                 captionPosition = enumOr(prefs.get("captionPosition", null), d.captionPosition),
                 captionSizePercent = prefs.getFloat("captionSizePercent", d.captionSizePercent)
                     .coerceIn(EditOptions.MIN_CAPTION_PERCENT, EditOptions.MAX_CAPTION_PERCENT),
@@ -48,12 +47,18 @@ class PreferencesSettingsStore(
         prefs.put("outputFormat", options.outputFormat.name)
         prefs.putInt("quality", options.quality)
         prefs.putBoolean("captionEnabled", options.captionEnabled)
-        prefs.put("captionSource", options.captionSource.name)
-        prefs.put("customCaption", options.customCaption)
+        prefs.put("captionTemplate", options.captionTemplate)
         prefs.put("captionPosition", options.captionPosition.name)
         prefs.putFloat("captionSizePercent", options.captionSizePercent)
         prefs.put("captionStyle", options.captionStyle.name)
         prefs.put("fileNameSuffix", options.fileNameSuffix)
+    }
+
+    /** 旧バージョンの「カスタムテキスト」設定があればテンプレートとして引き継ぐ */
+    private fun loadCaptionTemplate(default: String): String {
+        prefs.get("captionTemplate", null)?.let { return it }
+        val legacy = prefs.get("customCaption", "")
+        return if (prefs.get("captionSource", null) == "Custom" && legacy.isNotBlank()) legacy else default
     }
 
     override fun loadCustomOutputDir(): File? = prefs.get("customOutputDir", null)?.let(::File)
