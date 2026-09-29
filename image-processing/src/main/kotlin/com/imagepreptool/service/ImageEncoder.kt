@@ -84,6 +84,8 @@ object ImageEncoder {
         try {
             block(temp)
             if (!temp.isFile || temp.length() == 0L) throw IOException("書き出し結果が空です")
+            // キャンセル後に完成したファイルは置かない
+            if (Thread.currentThread().isInterrupted) throw InterruptedException("キャンセルされました")
             Files.move(temp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
         } finally {
             temp.delete()

@@ -22,6 +22,10 @@ class ImageProcessor(private val tools: ExternalTools) {
         return canvas
     }
 
+    /**
+     * 1 枚を書き出す。失敗は [ProcessResult] で返す。
+     * @throws InterruptedException スレッドが割り込まれた（キャンセルされた）場合。途中のファイルは残さない
+     */
     fun export(item: PlannedOutput, options: EditOptions): ProcessResult {
         if (item.skip) return ProcessResult(item.source, null, ProcessResult.Status.Skipped, "同名のファイルがあるためスキップしました")
         return try {
@@ -32,6 +36,10 @@ class ImageProcessor(private val tools: ExternalTools) {
             ProcessResult(item.source, item.target, ProcessResult.Status.Success, "${target} · ${item.format.label}")
         } catch (e: OutOfMemoryError) {
             ProcessResult(item.source, null, ProcessResult.Status.Failed, "メモリが不足しました")
+        } catch (e: InterruptedException) {
+            throw e
+        } catch (e: java.io.InterruptedIOException) {
+            throw InterruptedException("キャンセルされました").apply { initCause(e) }
         } catch (e: Exception) {
             ProcessResult(item.source, null, ProcessResult.Status.Failed, e.message ?: e.javaClass.simpleName)
         }

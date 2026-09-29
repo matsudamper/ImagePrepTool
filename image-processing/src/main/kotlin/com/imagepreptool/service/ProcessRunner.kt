@@ -12,6 +12,7 @@ internal object ProcessRunner {
      * 外部コマンドを実行する。出力は別スレッドで読み続けるので、出力量が多くてもブロックしない。
      * @throws IOException コマンドが見つからない・起動できない場合
      * @throws ExternalCommandException タイムアウトした場合
+     * @throws InterruptedException 待機中にスレッドが割り込まれた場合（キャンセル）。外部プロセスは終了させる
      */
     fun run(command: List<String>, timeoutSeconds: Long): Result {
         val process = ProcessBuilder(command)
@@ -24,7 +25,13 @@ internal object ProcessRunner {
                 process.inputStream.bufferedReader().use { r -> r.lineSequence().forEach { output.appendLine(it) } }
             }
         }
-        if (!process.waitFor(timeoutSeconds, TimeUnit.SECONDS)) {
+        val finished = try {
+            process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+        } catch (e: InterruptedException) {
+            process.destroyForcibly()
+            throw e
+        }
+        if (!finished) {
             process.destroyForcibly()
             throw ExternalCommandException("${command.first()} が ${timeoutSeconds} 秒以内に終了しませんでした")
         }

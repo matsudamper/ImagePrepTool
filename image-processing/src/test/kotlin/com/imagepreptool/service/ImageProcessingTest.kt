@@ -126,6 +126,43 @@ class ImageProcessingTest {
     }
 
     @Test
+    fun planProtectsOriginalsReachedThroughSymlink() {
+        val src = File(dir, "src").apply { mkdirs() }
+        val png = File(src, "a.png").also { ImageIO.write(BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB), "png", it) }
+        val jpg = File(src, "a.jpg").also { ImageIO.write(BufferedImage(8, 8, BufferedImage.TYPE_INT_RGB), "jpeg", it) }
+        val alias = File(dir, "alias")
+        try {
+            Files.createSymbolicLink(alias.toPath(), src.toPath())
+        } catch (e: Exception) {
+            return // シンボリックリンクを作れない環境（権限の無い Windows など）では確認しない
+        }
+        val plan = OutputPlanner.plan(listOf(png), alias, EditOptions(outputFormat = OutputFormat.Jpeg), protectedFiles = listOf(png, jpg))
+        val resolved = OutputPlanner.applyPolicy(plan, ConflictPolicy.Overwrite).single()
+        assertEquals("a (2).jpg", resolved.target.name)
+    }
+
+    @Test
+    fun interruptStopsExternalProcess() {
+        if (System.getProperty("os.name").lowercase().contains("win")) return
+        var error: Throwable? = null
+        val worker = Thread {
+            try {
+                ProcessRunner.run(listOf("sleep", "30"), timeoutSeconds = 60)
+            } catch (e: Throwable) {
+                error = e
+            }
+        }
+        val started = System.nanoTime()
+        worker.start()
+        Thread.sleep(300)
+        worker.interrupt()
+        worker.join(5_000)
+        assertFalse(worker.isAlive)
+        assertTrue(error is InterruptedException, "error = $error")
+        assertTrue((System.nanoTime() - started) / 1_000_000 < 5_000)
+    }
+
+    @Test
     fun conflictPolicies() {
         val src = writeImage("a.png")
         val out = File(dir, "out").apply { mkdirs() }

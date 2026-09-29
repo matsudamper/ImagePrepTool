@@ -42,6 +42,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
@@ -387,7 +388,8 @@ class ImagePrepViewModel(
                                         val running = vm.export as? ExportState.Running ?: return@mutate vm
                                         vm.copy(export = running.copy(currentName = item.source.name))
                                     }
-                                    val result = processor.export(item, options)
+                                    // キャンセル時はスレッドに割り込み、外部プロセスも止める
+                                    val result = runInterruptible { processor.export(item, options) }
                                     results += result
                                     mutate { vm ->
                                         val running = vm.export as? ExportState.Running ?: return@mutate vm

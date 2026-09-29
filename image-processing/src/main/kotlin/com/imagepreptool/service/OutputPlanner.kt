@@ -4,6 +4,7 @@ import com.imagepreptool.model.ConflictPolicy
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.OutputFormat
 import java.io.File
+import java.nio.file.Path
 
 data class PlannedOutput(
     val source: File,
@@ -44,13 +45,17 @@ object OutputPlanner {
         options: EditOptions,
         protectedFiles: Collection<File> = sources,
     ): List<PlannedOutput> {
-        val sourcePaths = (sources + protectedFiles).map { it.absoluteFile.normalize() }.toSet()
+        val originals = sources + protectedFiles
+        val sourcePaths = originals.map { it.absoluteFile.normalize() }.toSet()
+        // シンボリックリンクや Windows のジャンクション経由で同じファイルを指す場合も元画像とみなす
+        val realPaths = originals.mapNotNull(::realPath).toSet()
+        fun isOriginal(file: File) = file in sourcePaths || (file.exists() && realPath(file) in realPaths)
         val used = mutableSetOf<String>()
         return sources.map { source ->
             val format = resolveFormat(source, options.outputFormat)
             var target = File(outputDir, outputName(source, format, options.fileNameSuffix)).absoluteFile.normalize()
-            if (target.key() in used || target in sourcePaths) {
-                target = nextFreeName(target) { it.key() in used || it in sourcePaths || it.exists() }
+            if (target.key() in used || isOriginal(target)) {
+                target = nextFreeName(target) { it.key() in used || isOriginal(it) || it.exists() }
             }
             used += target.key()
             PlannedOutput(source, target, format, exists = target.exists())
@@ -72,6 +77,8 @@ object OutputPlanner {
             }
         }
     }
+
+    private fun realPath(file: File): Path? = runCatching { file.toPath().toRealPath() }.getOrNull()
 
     private fun nextFreeName(file: File, taken: (File) -> Boolean): File {
         val base = file.nameWithoutExtension
