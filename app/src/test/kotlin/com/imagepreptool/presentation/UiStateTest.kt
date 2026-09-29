@@ -54,9 +54,10 @@ class UiStateTest {
         vm.snapshotForTest().listener.requestExport()
         assertEquals(ExportState.Preparing, vm.snapshotForTest().export)
         assertFalse(vm.snapshotForTest().canExport)
-        // 準備中は閉じられない
+        // 準備中は閉じたり別の画像に差し替えたりできない
         vm.snapshotForTest().listener.closeAll()
-        assertEquals(1, vm.snapshotForTest().images.size)
+        vm.snapshotForTest().listener.openFolder(File("/photos/other"))
+        assertEquals(listOf(File("/photos/a.jpg")), vm.snapshotForTest().images.map { it.file })
     }
 
     @Test

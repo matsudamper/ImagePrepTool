@@ -80,7 +80,8 @@ object ImageEncoder {
 
     /** 途中で失敗しても壊れたファイルを残さないよう、一時ファイルに書いてから置き換える */
     private fun writeAtomically(file: File, block: (File) -> Unit) {
-        val temp = File(file.parentFile, ".${file.name}.tmp")
+        // 既存ファイルや同時に動く書き出しとぶつからないよう、処理ごとに一意な名前にする
+        val temp = Files.createTempFile(file.absoluteFile.parentFile.toPath(), ".${file.name}.", ".tmp").toFile()
         try {
             block(temp)
             if (!temp.isFile || temp.length() == 0L) throw IOException("書き出し結果が空です")

@@ -122,6 +122,7 @@ class ImagePrepViewModel(
     // region 画像の読み込み
 
     private fun openFolder(dir: File) {
+        if (rejectWhileExporting()) return
         // 後から開いたフォルダを優先し、前の読み込み結果で上書きしない
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
@@ -150,6 +151,7 @@ class ImagePrepViewModel(
 
     /** ドロップやファイル選択で追加する。フォルダが含まれていれば中の画像を追加する */
     private fun addFiles(files: List<File>) {
+        if (rejectWhileExporting()) return
         if (files.size == 1 && files.single().isDirectory && viewModelStateFlow.value.images.isEmpty()) {
             openFolder(files.single())
             return
@@ -177,6 +179,14 @@ class ImagePrepViewModel(
             }.ifEmpty { listOf("追加できる画像がありません") }
             messageChannel.send(message.joinToString("・"))
         }
+    }
+
+    /** 書き出しの準備中・実行中は一覧を差し替えない（表示と書き出し対象がずれるのを防ぐ） */
+    private fun rejectWhileExporting(): Boolean {
+        val export = viewModelStateFlow.value.export
+        val busy = export is ExportState.Preparing || export is ExportState.Running || export is ExportState.ConfirmConflicts
+        if (busy) messageChannel.trySend("書き出しが終わってから画像を読み込んでください")
+        return busy
     }
 
     internal fun snapshotForTest(): ImagePrepUiState = viewModelStateFlow.value.toUiState(listener)
