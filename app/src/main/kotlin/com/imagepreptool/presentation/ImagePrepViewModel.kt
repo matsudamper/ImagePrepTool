@@ -245,7 +245,7 @@ class ImagePrepViewModel(
     private fun removeUnreadable() {
         val state = viewModelStateFlow.value
         val tools = state.tools ?: return
-        removeImages(state.images.map { it.file }.filter { !state.canRead(it, tools) }.toSet())
+        removeImages(state.exportTargets.map { it.file }.filter { !state.canRead(it, tools) }.toSet())
     }
 
     private fun removeImages(targets: Set<File>) {
@@ -262,11 +262,13 @@ class ImagePrepViewModel(
             } else {
                 state.focusedFile
             }
+            // 選択の一部だけを削除したときは残りの選択を保ち、書き出し対象が一覧全体に広がらないようにする
+            val remainingSelection = state.selection - targets
             state.copy(
                 images = images,
                 focusedFile = focused,
-                selection = setOfNotNull(focused),
-                anchor = focused,
+                selection = remainingSelection.ifEmpty { setOfNotNull(focused) },
+                anchor = state.anchor?.takeIf { it !in targets } ?: focused,
                 sourceFolder = if (images.isEmpty()) null else state.sourceFolder,
                 lastRemoval = ImagePrepViewModelState.Removal(removed, state.sourceFolder),
                 removedFiles = state.removedFiles + removed.map { it.value.file },

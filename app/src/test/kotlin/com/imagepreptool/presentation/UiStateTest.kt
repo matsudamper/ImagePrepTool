@@ -121,6 +121,25 @@ class UiStateTest {
     }
 
     @Test
+    fun removingUnreadableKeepsRemainingSelection() {
+        val files = listOf("a.jpg", "b.heic", "c.jpg", "d.jpg", "e.heic").map { File("/photos/$it") }
+        val vm = ImagePrepViewModel(
+            settings = com.imagepreptool.data.InMemorySettingsStore(),
+            checkTools = { ExternalTools.None },
+        )
+        vm.addFilesForTest(files)
+        vm.setToolsForTest(ExternalTools.None)
+        vm.snapshotForTest().listener.clickImage(files[0], SelectMode.Single)
+        vm.snapshotForTest().listener.clickImage(files[2], SelectMode.Range)
+        vm.snapshotForTest().listener.removeUnreadable()
+        val state = vm.snapshotForTest()
+        // 選択外の読み込めない画像は残し、選択は削除されなかった画像のまま保つ
+        assertEquals(listOf(files[0], files[2], files[3], files[4]), state.images.map { it.file })
+        assertTrue(state.isExportingSelection)
+        assertEquals(setOf(files[0], files[2]), state.selectedFiles)
+    }
+
+    @Test
     fun undoRestoresRemovedImagesAtOriginalPositions() {
         val files = (1..5).map { File("/photos/$it.jpg") }
         val vm = ImagePrepViewModel(
