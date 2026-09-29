@@ -116,6 +116,7 @@ data class ImagePrepUiState(
         fun removeImage(file: File)
         fun excludeUnreadable()
         fun updateOptions(transform: (EditOptions) -> EditOptions)
+        fun setInputValid(field: String, valid: Boolean)
         fun chooseOutputDirectory(dir: File)
         fun resetOutputDirectory()
         fun refreshTools()

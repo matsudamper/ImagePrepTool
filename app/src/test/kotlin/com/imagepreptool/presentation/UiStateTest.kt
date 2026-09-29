@@ -45,6 +45,16 @@ class UiStateTest {
     }
 
     @Test
+    fun invalidSizeInputBlocksExport() {
+        val state = ImagePrepViewModelState(
+            images = listOf(ImageItem(File("/photos/a.jpg"), included = true)),
+            invalidInputs = setOf("longEdge"),
+        ).toUiState(listener)
+        assertFalse(state.canExport)
+        assertTrue(state.notices.any { it.blocking })
+    }
+
+    @Test
     fun exportIsDisabledWhileLoading() {
         val loading = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"), included = true)), isLoading = true).toUiState(listener)
         assertFalse(loading.canExport)

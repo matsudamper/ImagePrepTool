@@ -35,14 +35,17 @@ import androidx.compose.material3.TooltipBox
 import androidx.compose.material3.TooltipDefaults
 import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.semantics.Role
@@ -160,8 +163,9 @@ fun <T> SegmentedControl(
 @Composable
 fun NumberField(
     value: Int,
-    onValueChange: (Int) -> Unit,
     range: IntRange,
+    onValueChange: (Int) -> Unit,
+    onValidityChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
     suffix: String? = null,
     enabled: Boolean = true,
@@ -172,6 +176,10 @@ fun NumberField(
     }
     val parsed = text.toIntOrNull()
     val isError = parsed == null || parsed !in range
+    // 不正な入力のまま書き出すと、表示と違う直前の値で書き出されるため親へ伝える
+    val currentOnValidityChange by rememberUpdatedState(onValidityChange)
+    LaunchedEffect(isError) { currentOnValidityChange(!isError) }
+    DisposableEffect(Unit) { onDispose { currentOnValidityChange(true) } }
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
     val colors = MaterialTheme.colorScheme
@@ -192,6 +200,8 @@ fun NumberField(
             singleLine = true,
             interactionSource = interaction,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            // フォーカスが外れたら直前の有効な値に戻す
+            modifier = Modifier.onFocusChanged { state -> if (!state.isFocused && isError) text = value.toString() },
             textStyle = MaterialTheme.typography.bodyLarge.merge(MonoNumberStyle).copy(color = colors.onSurface),
             cursorBrush = SolidColor(colors.primary),
             decorationBox = { inner ->

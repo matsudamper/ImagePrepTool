@@ -76,6 +76,7 @@ class ImagePrepViewModel(
         override fun removeImage(file: File) = this@ImagePrepViewModel.removeImage(file)
         override fun excludeUnreadable() = this@ImagePrepViewModel.excludeUnreadable()
         override fun updateOptions(transform: (EditOptions) -> EditOptions) = this@ImagePrepViewModel.updateOptions(transform)
+        override fun setInputValid(field: String, valid: Boolean) = this@ImagePrepViewModel.setInputValid(field, valid)
         override fun chooseOutputDirectory(dir: File) = this@ImagePrepViewModel.chooseOutputDirectory(dir)
         override fun resetOutputDirectory() = this@ImagePrepViewModel.resetOutputDirectory()
         override fun refreshTools() = this@ImagePrepViewModel.refreshTools()
@@ -334,6 +335,10 @@ class ImagePrepViewModel(
 
     private fun updateOptions(transform: (EditOptions) -> EditOptions) {
         mutate { it.copy(options = transform(it.options)) }
+    }
+
+    private fun setInputValid(field: String, valid: Boolean) {
+        mutate { it.copy(invalidInputs = if (valid) it.invalidInputs - field else it.invalidInputs + field) }
     }
 
     private fun chooseOutputDirectory(dir: File) {
@@ -595,6 +600,8 @@ internal data class ImagePrepViewModelState(
     val preview: PreviewState = EmptyPreview,
     val export: ExportState = ExportState.Idle,
     val isLoading: Boolean = false,
+    /** 入力欄が不正な値になっている設定項目 */
+    val invalidInputs: Set<String> = setOf(),
 ) {
     val defaultOutputDir: File?
         get() = (sourceFolder ?: images.firstOrNull()?.file?.absoluteFile?.parentFile)?.let { File(it, "output") }
@@ -611,6 +618,9 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
     val included = images.filter { it.included }
     val outputDir = customOutputDir ?: defaultOutputDir
     val notices = buildList {
+        if (invalidInputs.isNotEmpty()) {
+            add(Notice("サイズは ${EditOptions.MIN_DIMENSION}〜${EditOptions.MAX_DIMENSION} px で入力してください。", blocking = true, action = null))
+        }
         val tools = tools
         val needsTools = included.any {
             ImageLoader.isHeif(it.file) || OutputPlanner.resolveFormat(it.file, options.outputFormat) == OutputFormat.Webp

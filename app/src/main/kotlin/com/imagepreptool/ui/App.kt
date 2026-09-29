@@ -240,6 +240,7 @@ private fun Workspace(
                 includedCount = uiState.includedCount,
                 canExport = uiState.canExport,
                 onOptionsChange = uiState.listener::updateOptions,
+                onInputValidityChange = uiState.listener::setInputValid,
                 onChooseOutput = {
                     DesktopDialogs.pickDirectory(dialogParent, "書き出し先のフォルダを選択", uiState.outputDirectory)
                         ?.let(uiState.listener::chooseOutputDirectory)

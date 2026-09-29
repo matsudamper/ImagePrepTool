@@ -92,6 +92,7 @@ fun SettingsPanel(
     includedCount: Int,
     canExport: Boolean,
     onOptionsChange: ((EditOptions) -> EditOptions) -> Unit,
+    onInputValidityChange: (String, Boolean) -> Unit,
     onChooseOutput: () -> Unit,
     onResetOutput: () -> Unit,
     onNoticeAction: (NoticeAction) -> Unit,
@@ -101,7 +102,7 @@ fun SettingsPanel(
     val colors = MaterialTheme.colorScheme
     Column(modifier = modifier.fillMaxHeight().background(colors.surface)) {
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-            SizeSection(options, onOptionsChange)
+            SizeSection(options, onOptionsChange, onInputValidityChange)
             HorizontalDivider(color = colors.outlineVariant)
             FormatSection(options, onOptionsChange)
             HorizontalDivider(color = colors.outlineVariant)
@@ -146,7 +147,11 @@ fun SettingsPanel(
 }
 
 @Composable
-private fun SizeSection(options: EditOptions, onChange: ((EditOptions) -> EditOptions) -> Unit) {
+private fun SizeSection(
+    options: EditOptions,
+    onChange: ((EditOptions) -> EditOptions) -> Unit,
+    onValidityChange: (String, Boolean) -> Unit,
+) {
     val range = EditOptions.MIN_DIMENSION..EditOptions.MAX_DIMENSION
     SettingsSection("サイズ") {
         SegmentedControl(
@@ -162,6 +167,7 @@ private fun SizeSection(options: EditOptions, onChange: ((EditOptions) -> EditOp
                     NumberField(
                         value = options.longEdge,
                         onValueChange = { v -> onChange { it.copy(longEdge = v) } },
+                        onValidityChange = { valid -> onValidityChange("longEdge", valid) },
                         range = range,
                         suffix = "px",
                         modifier = Modifier.width(112.dp),
@@ -183,6 +189,7 @@ private fun SizeSection(options: EditOptions, onChange: ((EditOptions) -> EditOp
                     NumberField(
                         value = options.fitWidth,
                         onValueChange = { v -> onChange { it.copy(fitWidth = v) } },
+                        onValidityChange = { valid -> onValidityChange("fitWidth", valid) },
                         range = range,
                         suffix = "px",
                         modifier = Modifier.weight(1f),
@@ -191,6 +198,7 @@ private fun SizeSection(options: EditOptions, onChange: ((EditOptions) -> EditOp
                     NumberField(
                         value = options.fitHeight,
                         onValueChange = { v -> onChange { it.copy(fitHeight = v) } },
+                        onValidityChange = { valid -> onValidityChange("fitHeight", valid) },
                         range = range,
                         suffix = "px",
                         modifier = Modifier.weight(1f),
