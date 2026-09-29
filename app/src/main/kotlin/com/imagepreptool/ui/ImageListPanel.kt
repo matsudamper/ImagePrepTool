@@ -59,6 +59,7 @@ import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import java.io.File
 import com.imagepreptool.model.ExternalTools
@@ -70,6 +71,7 @@ import com.imagepreptool.resources.ic_broken_image
 import com.imagepreptool.resources.ic_close
 import com.imagepreptool.resources.ic_folder
 import com.imagepreptool.ui.components.Tooltip
+import com.imagepreptool.ui.theme.AppTheme
 import com.imagepreptool.ui.theme.MonoNumberStyle
 import org.jetbrains.compose.resources.painterResource
 
@@ -149,8 +151,8 @@ fun ImageListPanel(
                     when (event.key) {
                         Key.DirectionLeft -> onMoveFocus(-1)
                         Key.DirectionRight -> onMoveFocus(1)
-                        Key.DirectionUp -> onMoveFocus(-columns)
-                        Key.DirectionDown -> onMoveFocus(columns)
+                        Key.DirectionUp -> onMoveFocus(verticalMoveDelta(imageGroups, focusedFile, columns, downward = false))
+                        Key.DirectionDown -> onMoveFocus(verticalMoveDelta(imageGroups, focusedFile, columns, downward = true))
                         Key.Delete -> if (isSelectionMode) onRemoveSelection() else focusedFile?.let(onRemove)
                         Key.Escape -> onClearSelection()
                         Key.A -> if (event.isCtrlPressed || event.isMetaPressed) onSelectAll() else return@onPreviewKeyEvent false
@@ -204,6 +206,32 @@ private fun gridIndexOf(imageGroups: List<ImageGroup>, file: File): Int? =
         .flatMap { group -> listOf(group.folder) + group.images.map { it.file } }
         .indexOf(file)
         .takeIf { it >= 0 }
+
+/**
+ * 上下キーで移動する枚数。フォルダごとに見出しで行が改まるため、
+ * 隣のフォルダへ移るときは一覧の通し番号ではなく同じ列の画像を移動先にする
+ */
+internal fun verticalMoveDelta(imageGroups: List<ImageGroup>, focusedFile: File?, columns: Int, downward: Boolean): Int {
+    val groupIndex = imageGroups.indexOfFirst { group -> group.images.any { it.file == focusedFile } }.takeIf { it >= 0 } ?: return 0
+    val group = imageGroups[groupIndex]
+    val groupStart = imageGroups.take(groupIndex).sumOf { it.images.size }
+    val indexInGroup = group.images.indexOfFirst { it.file == focusedFile }
+    val column = indexInGroup % columns
+    val row = indexInGroup / columns
+    val lastRow = (group.images.size - 1) / columns
+    val target = when {
+        downward && row < lastRow -> groupStart + minOf(indexInGroup + columns, group.images.lastIndex)
+        downward -> imageGroups.getOrNull(groupIndex + 1)?.let { next ->
+            groupStart + group.images.size + minOf(column, next.images.lastIndex)
+        }
+        row > 0 -> groupStart + indexInGroup - columns
+        else -> imageGroups.getOrNull(groupIndex - 1)?.let { previous ->
+            val previousLastRowStart = previous.images.lastIndex / columns * columns
+            groupStart - previous.images.size + minOf(previousLastRowStart + column, previous.images.lastIndex)
+        }
+    } ?: return 0
+    return target - (groupStart + indexInGroup)
+}
 
 private val FolderHeaderHeight = 44.dp
 
@@ -353,6 +381,35 @@ private fun Thumbnail(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth().padding(top = 5.dp, start = 2.dp, end = 2.dp),
+        )
+    }
+}
+
+@Preview
+@Composable
+private fun ImageListPanelPreview() {
+    val imageGroups = listOf(
+        ImageGroup(File("/photos/trip_2026"), (1..5).map { ImageItem(File("/photos/trip_2026/IMG_$it.jpg")) }),
+        ImageGroup(File("/photos/misc"), (1..3).map { ImageItem(File("/photos/misc/IMG_$it.jpg")) }),
+    )
+    AppTheme(darkTheme = false) {
+        ImageListPanel(
+            imageGroups = imageGroups,
+            focusedFile = imageGroups.first().images.first().file,
+            selectedFiles = setOf(imageGroups.first().images.first().file),
+            isSelectionMode = false,
+            tools = null,
+            onClickImage = { _, _ -> },
+            onRemoveSelection = {},
+            onUndoRemoval = {},
+            onSelectAll = {},
+            onClearSelection = {},
+            onMoveFocus = {},
+            onRemove = {},
+            onReveal = {},
+            onOpenFolder = {},
+            onRemoveFolder = {},
+            modifier = Modifier.width(312.dp).height(640.dp),
         )
     }
 }
