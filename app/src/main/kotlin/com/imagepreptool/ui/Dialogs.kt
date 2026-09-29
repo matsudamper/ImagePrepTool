@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -257,8 +259,8 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
             Text("確認中…", style = MaterialTheme.typography.bodyMedium)
             return@AppDialog
         }
-        Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.small) {
-            Column {
+        Surface(color = MaterialTheme.colorScheme.surfaceContainer, shape = MaterialTheme.shapes.small, modifier = Modifier.heightIn(max = 420.dp)) {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 tools.statuses.forEachIndexed { index, status ->
                     if (index > 0) HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.Top) {
