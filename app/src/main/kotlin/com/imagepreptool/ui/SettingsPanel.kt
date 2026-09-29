@@ -455,7 +455,7 @@ private fun OutputSection(
             Spacer(Modifier.height(6.dp))
             CompactTextField(
                 value = options.fileNameSuffix,
-                onValueChange = { text -> onChange { it.copy(fileNameSuffix = text.take(40)) } },
+                onValueChange = { text -> onChange { it.copy(fileNameSuffix = text.takeCodePoints(MAX_SUFFIX_CODE_POINTS)) } },
                 placeholder = "例: _web",
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -580,4 +580,12 @@ private fun PositionPicker(selected: CaptionPosition, onSelect: (CaptionPosition
             }
         }
     }
+}
+
+private const val MAX_SUFFIX_CODE_POINTS = 40
+
+/** 絵文字などのサロゲートペアを途中で切らずに先頭から [count] 文字（コードポイント）までを取る */
+private fun String.takeCodePoints(count: Int): String {
+    val codePoints = codePointCount(0, length)
+    return if (codePoints <= count) this else substring(0, offsetByCodePoints(0, count))
 }

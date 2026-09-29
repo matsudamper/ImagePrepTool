@@ -40,6 +40,7 @@ import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.service.CaptionTemplate
 import com.imagepreptool.service.ExifService
 import com.imagepreptool.service.ExternalToolChecker
+import com.imagepreptool.service.ImageEncoder
 import com.imagepreptool.service.ImageLoader
 import com.imagepreptool.service.ImageProcessor
 import com.imagepreptool.service.LoadedImage
@@ -543,15 +544,18 @@ class ImagePrepViewModel(
             } else {
                 null
             }
+            val outputFormat = OutputPlanner.resolveFormat(file, options.outputFormat)
             val bitmap = withContext(Dispatchers.Default) {
-                processor.render(image, caption, options, renderSize).toComposeImageBitmap()
+                val rendered = processor.render(image, caption, options, renderSize)
+                val shown = if (outputFormat == OutputFormat.Jpeg && rendered.colorModel.hasAlpha()) ImageEncoder.flattenOnWhite(rendered) else rendered
+                shown.toComposeImageBitmap()
             }
             mutate {
                 it.copy(
                     preview = it.preview.copy(
                         processed = bitmap,
                         outputSize = outputSize,
-                        outputFormat = OutputPlanner.resolveFormat(file, options.outputFormat),
+                        outputFormat = outputFormat,
                         loading = false,
                     ),
                 )

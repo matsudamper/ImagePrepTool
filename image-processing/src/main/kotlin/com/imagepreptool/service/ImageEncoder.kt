@@ -110,7 +110,8 @@ object ImageEncoder {
         }
     }
 
-    private fun flattenOnWhite(image: BufferedImage): BufferedImage =
+    /** JPEG は透明を持てないため白背景に合成する（プレビューでも同じ見た目にするため公開） */
+    fun flattenOnWhite(image: BufferedImage): BufferedImage =
         BufferedImage(image.width, image.height, BufferedImage.TYPE_INT_RGB).also { out ->
             val g = out.createGraphics()
             g.color = Color.WHITE
