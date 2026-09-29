@@ -32,14 +32,14 @@ import com.imagepreptool.presentation.ImagePrepViewModel
 import com.imagepreptool.service.ExifService
 
 @Composable
-fun Step2EditScreen(uiState: ImagePrepUiState, viewModel: ImagePrepViewModel) {
+fun Step2EditScreen(uiState: ImagePrepUiState, viewModel: ImagePrepViewModel, modifier: Modifier = Modifier) {
     val options = uiState.editOptions
     val previewCaption = uiState.selectedImages.firstOrNull()?.let { file ->
         ExifService.buildCaption(file, options.customExifLine)
     }.orEmpty()
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
             .padding(16.dp)
             .verticalScroll(rememberScrollState()),

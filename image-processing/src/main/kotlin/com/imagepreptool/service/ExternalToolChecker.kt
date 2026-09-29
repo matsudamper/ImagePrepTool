@@ -1,8 +1,8 @@
 package com.imagepreptool.service
 
-import com.imagepreptool.model.ExternalToolStatus
 import java.io.IOException
 import java.util.concurrent.TimeUnit
+import com.imagepreptool.model.ExternalToolStatus
 
 object ExternalToolChecker {
 

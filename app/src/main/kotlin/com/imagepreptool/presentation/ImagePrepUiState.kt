@@ -1,11 +1,11 @@
 package com.imagepreptool.presentation
 
+import java.io.File
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalToolStatus
 import com.imagepreptool.model.ImageSelection
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.model.WorkflowStep
-import java.io.File
 
 data class ImagePrepUiState(
     val currentStep: WorkflowStep = WorkflowStep.Select,
