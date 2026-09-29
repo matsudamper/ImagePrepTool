@@ -163,11 +163,11 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ -z "$PORTABLE_ARTIFACT_URL" ]; then
+          if [ -z "$PORTABLE_ARTIFACT_URL" ] || [ "$WINDOWS_JOB_RESULT" != "success" ]; then
             if [ "$WINDOWS_JOB_RESULT" != "success" ]; then
-              error_message="❌ **成果物をビルドできませんでした** (\`package-windows-exe\`: \`${WINDOWS_JOB_RESULT}\`, [run](${RUN_URL}))"
+              error_message="❌ 成果物をビルドできませんでした (\`package-windows-exe\`: \`${WINDOWS_JOB_RESULT}\`, [run](${RUN_URL}))"
             else
-              error_message="❌ **必須成果物の \`artifact-url\` がありません** ([run](${RUN_URL}))"
+              error_message="❌ 必須成果物の \`artifact-url\` がありません ([run](${RUN_URL}))"
             fi
             echo "failed=true" >> "$GITHUB_OUTPUT"
             {
@@ -191,7 +191,7 @@ jobs:
           echo "failed=false" >> "$GITHUB_OUTPUT"
           {
             echo "message<<EOF"
-            echo "✅ **Portable build is ready!**"
+            echo "✅ Portable build is ready!"
             echo ""
             echo "| Storage | 圧縮方式 | Download Link | QR Code |"
             echo "| :--- | :--- | :--- | :--- |"
