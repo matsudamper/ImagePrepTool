@@ -45,6 +45,12 @@ class UiStateTest {
     }
 
     @Test
+    fun exportIsDisabledWhileLoading() {
+        val loading = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"), included = true)), isLoading = true).toUiState(listener)
+        assertFalse(loading.canExport)
+    }
+
+    @Test
     fun exportIsReservedBeforePlanning() {
         val vm = ImagePrepViewModel(
             settings = com.imagepreptool.data.InMemorySettingsStore(),

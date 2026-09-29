@@ -92,7 +92,7 @@ data class ImagePrepUiState(
     val listener: Listener,
 ) {
     val hasImages: Boolean get() = images.isNotEmpty()
-    val canExport: Boolean get() = includedCount > 0 && notices.none { it.blocking } && export == ExportState.Idle
+    val canExport: Boolean get() = includedCount > 0 && notices.none { it.blocking } && export == ExportState.Idle && !isLoading
     val missingToolCount: Int
         get() = tools?.let { t ->
             listOf(t.canWriteWebp, t.heifDecoder != null).count { !it }

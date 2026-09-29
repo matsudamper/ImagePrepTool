@@ -159,8 +159,13 @@ class ImagePrepViewModel(
         }
         loadJob?.cancel()
         loadJob = viewModelScope.launch {
-            val expanded = withContext(Dispatchers.IO) {
-                files.flatMap { if (it.isDirectory) listImages(it) else listOf(it) }
+            mutate { it.copy(isLoading = true) }
+            val expanded = try {
+                runInterruptible(Dispatchers.IO) {
+                    files.flatMap { if (it.isDirectory) listImages(it) else listOf(it) }
+                }
+            } finally {
+                mutate { it.copy(isLoading = false) }
             }
             val supported = expanded.filter { it.isFile && ImageLoader.isSupported(it) }
             val ignored = expanded.size - supported.size
@@ -356,7 +361,8 @@ class ImagePrepViewModel(
     private fun requestExport() {
         val state = viewModelStateFlow.value
         val ui = state.toUiState(listener)
-        if (!ui.canExport) return
+        // 読み込み中に書き出すと、完了後に一覧が入れ替わり画面と違う画像を書き出してしまう
+        if (!ui.canExport || loadJob?.isActive == true) return
         val outputDir = ui.outputDirectory ?: return
         // 計画中に再度呼ばれても二重に書き出さないよう、先に状態を確保する
         mutate { it.copy(export = ExportState.Preparing) }
