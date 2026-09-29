@@ -288,7 +288,7 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
         }
         Spacer(Modifier.height(10.dp))
         Text(
-            "HEIC は heif-dec / heif-convert / magick のいずれか 1 つがあれば読み込めます。インストール後はアプリを再起動するか、PATH を更新したうえで「再確認」を押してください。",
+            "HEIC は heif-dec / heif-convert / magick のいずれか 1 つがあれば読み込めます。インストール後は PATH がアプリに反映されないため、アプリを再起動してください。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
