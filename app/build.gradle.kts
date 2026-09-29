@@ -1,4 +1,3 @@
-import org.gradle.api.tasks.bundling.Zip
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 
 plugins {
@@ -42,8 +41,10 @@ compose.desktop {
             targetFormats(TargetFormat.Exe)
             modules("java.instrument", "java.prefs", "java.naming", "jdk.unsupported")
             packageName = "ImagePrepTool"
-            packageVersion = "0.1.0"
-            description = "画像を公開用に整える（リサイズ・形式変換・撮影情報の書き込み）"
+            // jpackage の MSI は同じバージョンだと上書きインストールできないため、CI のビルド番号をパッチ番号にする
+            packageVersion = "0.1.${providers.environmentVariable("GITHUB_RUN_NUMBER").getOrElse("0")}"
+            // jpackage の MSI は en-us（コードページ 1252）で生成されるため、日本語を含めると WiX がエラーになる
+            description = "Prepare images for publishing (resize, convert format, write shooting info)"
             vendor = "ImagePrepTool"
 
             windows {
@@ -60,36 +61,4 @@ compose.desktop {
 
 tasks.test {
     useJUnitPlatform()
-}
-
-val portableAppDir = layout.buildDirectory.dir("compose/portable/ImagePrepTool")
-val isWindowsHost = providers.systemProperty("os.name").map { it.lowercase().contains("windows") }
-
-tasks.register("preparePortableWindowsApp") {
-    group = "compose"
-    description = "Windows 用ポータブル配布（ImagePrepTool.exe + 同梱 JRE）"
-    dependsOn("createReleaseDistributable")
-    onlyIf { isWindowsHost.get() }
-    doLast {
-        val releaseApp = layout.buildDirectory.dir("compose/binaries/main-release/app").get().asFile
-        check(releaseApp.exists()) { "Release app folder not found: $releaseApp" }
-        val dest = portableAppDir.get().asFile
-        dest.deleteRecursively()
-        dest.mkdirs()
-        copy {
-            from(releaseApp)
-            into(dest)
-        }
-        logger.lifecycle("Portable app: ${dest.absolutePath}")
-    }
-}
-
-tasks.register<Zip>("packagePortableWindowsExe") {
-    group = "compose"
-    description = "ポータブル版 ZIP（展開後 exe を直接起動、Java インストール不要）"
-    dependsOn("preparePortableWindowsApp")
-    onlyIf { isWindowsHost.get() }
-    from(portableAppDir)
-    archiveFileName.set("ImagePrepTool-${project.version}-portable-win.zip")
-    destinationDirectory.set(layout.buildDirectory.dir("compose/binaries/main-release/portable"))
 }
