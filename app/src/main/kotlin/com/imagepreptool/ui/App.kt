@@ -297,7 +297,7 @@ private fun TopBar(
             ) {
                 Spacer(Modifier.weight(1f))
                 Tooltip("別のフォルダを開く (Ctrl+O)") {
-                    IconButton(onClick = actions.openFolder) { Icon(painterResource(Res.drawable.ic_folder_open), "別のフォルダを開く") }
+                    IconButton(onClick = actions.openFolder) { Icon(painterResource(Res.drawable.ic_folder_open), "フォルダを追加") }
                 }
                 Tooltip("画像を追加") {
                     IconButton(onClick = actions.pickImages) { Icon(painterResource(Res.drawable.ic_add_photo), "画像を追加") }

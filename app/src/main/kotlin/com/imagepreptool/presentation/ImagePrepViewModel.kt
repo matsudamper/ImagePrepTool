@@ -140,16 +140,25 @@ class ImagePrepViewModel(
                 messageChannel.send(SnackbarMessage("「${dir.name}」に読み込める画像がありません"))
                 return@launch
             }
-            mutate {
-                it.copy(
-                    images = files.map(::ImageItem),
-                    focusedFile = files.first(),
-                    selection = setOf(files.first()),
-                    anchor = files.first(),
-                    isSelectionMode = false,
-                    lastRemoval = null,
-                    removedFiles = emptySet(),
-                )
+            mutate { state ->
+                val existing = state.images.map { it.file.absoluteFile }.toSet()
+                val added = files.map { it.absoluteFile }.filter { it !in existing }
+                if (state.images.isEmpty()) {
+                    state.copy(
+                        images = added.map(::ImageItem),
+                        focusedFile = added.firstOrNull(),
+                        selection = added.take(1).toSet(),
+                        anchor = added.firstOrNull(),
+                        isSelectionMode = false,
+                        lastRemoval = null,
+                        removedFiles = emptySet(),
+                    )
+                } else {
+                    state.copy(
+                        images = (state.images + added.map(::ImageItem)).groupedByFolder(),
+                        lastRemoval = null,
+                    )
+                }
             }
             rememberRecent(dir)
         }
