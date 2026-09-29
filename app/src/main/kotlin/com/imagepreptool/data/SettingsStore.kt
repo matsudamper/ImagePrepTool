@@ -33,7 +33,7 @@ class PreferencesSettingsStore(
                 captionPosition = enumOr(prefs.get("captionPosition", null), d.captionPosition),
                 captionSizePercent = prefs.getFloat("captionSizePercent", d.captionSizePercent)
                     .coerceIn(EditOptions.MIN_CAPTION_PERCENT, EditOptions.MAX_CAPTION_PERCENT),
-                captionStyle = enumOr(prefs.get("captionStyle", null), d.captionStyle),
+                captionStyle = enumOr(prefs.get("captionStyle", null)?.replace("Shadow", "Plain"), d.captionStyle),
                 fileNameSuffix = prefs.get("fileNameSuffix", d.fileNameSuffix),
                 onlyScaleDown = prefs.getBoolean("onlyScaleDown", d.onlyScaleDown),
             )

@@ -188,7 +188,7 @@ class ImageProcessingTest {
             outputFormat = OutputFormat.Jpeg,
             captionEnabled = true,
             captionTemplate = "テスト caption\n{filename}",
-            captionStyle = CaptionStyle.Shadow,
+            captionStyle = CaptionStyle.Plain,
         )
         val out = File(dir, "out")
         val item = OutputPlanner.plan(listOf(src), out, options.copy(fileNameSuffix = "_web")).single()
