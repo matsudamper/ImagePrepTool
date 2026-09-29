@@ -7,7 +7,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("com.drewnoakes:metadata-extractor:2.19.0")
+    implementation("com.drewnoakes:metadata-extractor:2.21.0")
     // WebP 読み込みと CMYK などの JPEG を ImageIO で扱えるようにする
     api("com.twelvemonkeys.imageio:imageio-webp:3.12.0")
     api("com.twelvemonkeys.imageio:imageio-jpeg:3.12.0")

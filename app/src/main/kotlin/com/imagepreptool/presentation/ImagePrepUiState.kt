@@ -18,6 +18,12 @@ data class ImageItem(
     val file: File,
 )
 
+/** 一覧で同じフォルダの画像をまとめて見出しを付ける単位 */
+data class ImageGroup(
+    val folder: File,
+    val images: List<ImageItem>,
+)
+
 data class PreviewState(
     val file: File?,
     val original: ImageBitmap?,
@@ -81,14 +87,15 @@ data class Notice(
 
 data class ImagePrepUiState(
     val images: List<ImageItem>,
+    /** [images] をフォルダごとに区切ったもの。並び順は [images] と同じ */
+    val imageGroups: List<ImageGroup>,
     /** 書き出す枚数。複数選択中は選択中の画像、そうでなければ一覧のすべて */
     val exportCount: Int,
     val isExportingSelection: Boolean,
     val focusedFile: File?,
     val selectedFiles: Set<File>,
-    /** 一覧の見出し（フォルダ名など） */
-    val sourceTitle: String?,
-    val sourcePath: String?,
+    /** 画像を開くダイアログで最初に表示するフォルダ */
+    val pickerInitialDirectory: File?,
     val options: EditOptions,
     val outputDirectory: File?,
     val isCustomOutputDirectory: Boolean,
@@ -120,6 +127,7 @@ data class ImagePrepUiState(
         fun moveFocus(delta: Int)
         fun removeImage(file: File)
         fun removeSelection()
+        fun removeFolder(folder: File)
         fun removeUnreadable()
         fun undoRemoval()
         fun updateOptions(transform: (EditOptions) -> EditOptions)
