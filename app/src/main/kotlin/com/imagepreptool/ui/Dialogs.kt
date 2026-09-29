@@ -27,6 +27,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -281,6 +283,11 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
                                 maxLines = 3,
                                 overflow = TextOverflow.Ellipsis,
                             )
+                            val command = installCommand(status.tool)
+                            if (!status.available && command != null) {
+                                Spacer(Modifier.height(6.dp))
+                                CopyableCommand(command)
+                            }
                         }
                     }
                 }
@@ -296,7 +303,23 @@ fun ToolsDialog(tools: ExternalTools?, onRecheck: () -> Unit, onClose: () -> Uni
 }
 
 private fun installHint(tool: ExternalTool): String = when (tool) {
-    ExternalTool.Cwebp -> "libwebp に含まれます。winget search webp で探すか、公式配布の libwebp を PATH に追加してください"
-    ExternalTool.HeifDec, ExternalTool.HeifConvert -> "libheif に含まれます。winget では magick（ImageMagick）の導入が簡単です"
-    ExternalTool.Magick -> "winget install ImageMagick.ImageMagick（HEIC 対応版）"
+    ExternalTool.Cwebp -> "libwebp に含まれます。winget にはパッケージが無いため、公式配布の libwebp を PATH に追加してください"
+    ExternalTool.HeifDec, ExternalTool.HeifConvert -> "libheif に含まれます。下のコマンドで magick（ImageMagick）を入れれば代替できます"
+    ExternalTool.Magick -> "ImageMagick に含まれます（HEIC 対応版）"
+}
+
+private fun installCommand(tool: ExternalTool): String? = when (tool) {
+    ExternalTool.Cwebp -> null
+    ExternalTool.HeifDec, ExternalTool.HeifConvert, ExternalTool.Magick -> "winget install ImageMagick.ImageMagick"
+}
+
+@Composable
+private fun CopyableCommand(command: String) {
+    val clipboard = LocalClipboardManager.current
+    Surface(color = MaterialTheme.colorScheme.surfaceContainerHighest, shape = MaterialTheme.shapes.extraSmall) {
+        Row(Modifier.padding(start = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(command, style = MaterialTheme.typography.bodySmall.merge(MonoNumberStyle), modifier = Modifier.weight(1f))
+            TextButton(onClick = { clipboard.setText(AnnotatedString(command)) }) { Text("コピー") }
+        }
+    }
 }
