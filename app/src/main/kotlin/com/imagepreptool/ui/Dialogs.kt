@@ -97,6 +97,23 @@ private fun AppDialog(
 }
 
 @Composable
+fun CloseConfirmDialog(onConfirm: () -> Unit, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+    AppDialog(
+        modifier = modifier,
+        onDismiss = onCancel,
+        icon = Res.drawable.ic_warning_amber,
+        iconTint = AppTheme.extended.warning,
+        title = "ホームに戻りますか？",
+        buttons = {
+            TextButton(onClick = onCancel) { Text("キャンセル") }
+            Button(onClick = onConfirm) { Text("ホームに戻る") }
+        },
+    ) {
+        Text("読み込んだ画像の一覧と選択状態は破棄されます（書き出し設定は保持されます）。", style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@Composable
 fun ConflictDialog(state: ExportState.ConfirmConflicts, onResolve: (ConflictPolicy?) -> Unit, modifier: Modifier = Modifier) {
     val conflicts = state.plan.filter { it.exists }
     AppDialog(
