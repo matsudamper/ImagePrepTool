@@ -301,6 +301,11 @@ private fun FolderHeader(group: ImageGroup, onOpen: () -> Unit, onRemove: () -> 
                 color = colors.onSurfaceVariant,
                 modifier = Modifier.padding(start = 8.dp),
             )
+            Tooltip("このフォルダを一覧から除外") {
+                IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
+                    Icon(painterResource(Res.drawable.ic_close), "このフォルダを一覧から除外", modifier = Modifier.size(18.dp))
+                }
+            }
         }
     }
 }
