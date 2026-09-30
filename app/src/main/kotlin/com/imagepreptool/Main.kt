@@ -1,6 +1,7 @@
 package com.imagepreptool
 
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
@@ -15,6 +16,7 @@ import androidx.compose.ui.window.rememberWindowState
 import java.awt.Dimension
 import java.io.File
 import javax.swing.UIManager
+import kotlinx.coroutines.launch
 import com.imagepreptool.presentation.ExportState
 import com.imagepreptool.presentation.ImagePrepViewModel
 import com.imagepreptool.resources.Res
@@ -32,6 +34,7 @@ fun main(args: Array<String>) {
     application {
         val viewModel = remember { ImagePrepViewModel().also { vm -> if (initial.isNotEmpty()) vm.uiStateFlow.value.listener.addFiles(initial) } }
         var composeWindow: java.awt.Window? = null
+        val scope = rememberCoroutineScope()
         val exitApp = {
             viewModel.uiStateFlow.value.listener.cancelExport()
             exitApplication()
@@ -49,8 +52,10 @@ fun main(args: Array<String>) {
                 when (event.key) {
                     Key.O -> {
                         if (ui.export == ExportState.Idle) {
-                            DesktopDialogs.pickDirectory(composeWindow, "画像のあるフォルダを選択", ui.pickerInitialDirectory)
-                                ?.let(ui.listener::openFolder)
+                            scope.launch {
+                                DesktopDialogs.pickDirectory(composeWindow, "画像のあるフォルダを選択", ui.pickerInitialDirectory)
+                                    ?.let(ui.listener::openFolder)
+                            }
                         }
                         true
                     }
