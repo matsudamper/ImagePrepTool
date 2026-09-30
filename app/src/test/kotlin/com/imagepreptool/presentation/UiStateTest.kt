@@ -33,7 +33,7 @@ class UiStateTest {
             tools = ExternalTools.None,
         ).toUiState(listener)
         assertFalse(state.canExport)
-        assertTrue(state.notices.any { it.blocking && it.action == NoticeAction.ShowTools })
+        assertTrue(state.notices.any { it.blocking })
     }
 
     @Test

@@ -57,10 +57,10 @@ import com.imagepreptool.presentation.ImagePrepViewModel
 import com.imagepreptool.presentation.NoticeAction
 import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_add_photo
-import com.imagepreptool.resources.ic_close
 import com.imagepreptool.resources.ic_download
 import com.imagepreptool.resources.ic_extension
 import com.imagepreptool.resources.ic_folder_open
+import com.imagepreptool.resources.ic_home
 import com.imagepreptool.ui.components.Tooltip
 import com.imagepreptool.ui.theme.AppTheme
 import org.jetbrains.compose.resources.painterResource
@@ -79,6 +79,7 @@ fun App(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showTools by remember { mutableStateOf(false) }
+    var showCloseConfirm by remember { mutableStateOf(false) }
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { message ->
@@ -152,7 +153,7 @@ fun App(
                 )
                 ToolsButton(uiState, onClick = { showTools = true }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
             } else {
-                Workspace(uiState, actions, dialogParent, onShowTools = { showTools = true })
+                Workspace(uiState, actions, dialogParent, onGoHome = { showCloseConfirm = true })
             }
 
             AnimatedVisibility(visible = dragging, enter = fadeIn(), exit = fadeOut()) {
@@ -174,6 +175,16 @@ fun App(
                 listener.dismissExport()
             },
             onClose = listener::dismissExport,
+        )
+    }
+
+    if (showCloseConfirm) {
+        CloseConfirmDialog(
+            onConfirm = {
+                showCloseConfirm = false
+                listener.closeAll()
+            },
+            onCancel = { showCloseConfirm = false },
         )
     }
 
@@ -213,12 +224,12 @@ private fun Workspace(
     uiState: ImagePrepUiState,
     actions: AppActions,
     dialogParent: Component?,
-    onShowTools: () -> Unit,
+    onGoHome: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
     Column(modifier.fillMaxSize()) {
-        TopBar(uiState, actions, onShowTools)
+        TopBar(actions, onGoHome)
         Row(Modifier.weight(1f).fillMaxWidth()) {
             ImageListPanel(
                 imageGroups = uiState.imageGroups,
@@ -271,7 +282,6 @@ private fun Workspace(
                 onNoticeAction = { action ->
                     when (action) {
                         NoticeAction.RemoveUnreadable -> uiState.listener.removeUnreadable()
-                        NoticeAction.ShowTools -> onShowTools()
                     }
                 },
                 onExport = uiState.listener::requestExport,
@@ -283,9 +293,8 @@ private fun Workspace(
 
 @Composable
 private fun TopBar(
-    uiState: ImagePrepUiState,
     actions: AppActions,
-    onShowTools: () -> Unit,
+    onGoHome: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -302,10 +311,9 @@ private fun TopBar(
                 Tooltip("画像を追加") {
                     IconButton(onClick = actions.pickImages) { Icon(painterResource(Res.drawable.ic_add_photo), "画像を追加") }
                 }
-                ToolsButton(uiState, onClick = onShowTools)
                 VerticalDivider(Modifier.height(24.dp).padding(horizontal = 4.dp), color = colors.outlineVariant)
-                Tooltip("すべて閉じる") {
-                    IconButton(onClick = uiState.listener::closeAll) { Icon(painterResource(Res.drawable.ic_close), "すべて閉じる") }
+                Tooltip("ホームに戻る") {
+                    IconButton(onClick = onGoHome) { Icon(painterResource(Res.drawable.ic_home), "ホームに戻る") }
                 }
             }
             HorizontalDivider(color = colors.outlineVariant)
