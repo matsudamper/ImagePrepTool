@@ -109,7 +109,7 @@ fun CloseConfirmDialog(onConfirm: () -> Unit, onCancel: () -> Unit, modifier: Mo
             Button(onClick = onConfirm) { Text("ホームに戻る") }
         },
     ) {
-        Text("読み込んだ画像の一覧と編集内容は破棄されます。", style = MaterialTheme.typography.bodyLarge)
+        Text("読み込んだ画像の一覧と選択状態は破棄されます（書き出し設定は保持されます）。", style = MaterialTheme.typography.bodyLarge)
     }
 }
 
