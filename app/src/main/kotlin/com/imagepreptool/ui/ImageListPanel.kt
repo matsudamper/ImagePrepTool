@@ -63,11 +63,14 @@ import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import java.io.File
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.presentation.ImageGroup
@@ -283,6 +286,15 @@ private fun Density.adaptiveColumnCount(viewportWidthPx: Int): Int {
     return ((gridWidth + spacing) / (ThumbnailMinSize.roundToPx() + spacing)).coerceAtLeast(1)
 }
 
+/** 親の contentPadding を越えて左右いっぱいまで広げる */
+private fun Modifier.extendHorizontally(extension: Dp): Modifier = layout { measurable, constraints ->
+    val extensionPx = extension.roundToPx()
+    val placeable = measurable.measure(constraints.offset(horizontal = extensionPx * 2))
+    layout(constraints.maxWidth, placeable.height) {
+        placeable.place(-extensionPx, 0)
+    }
+}
+
 private val FolderHeaderHeight = 44.dp
 private val ThumbnailMinSize = 84.dp
 private val GridHorizontalPadding = 12.dp
@@ -302,9 +314,11 @@ private fun FolderHeader(group: ImageGroup, expanded: Boolean, onToggleExpand: (
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .extendHorizontally(GridHorizontalPadding)
                 .height(FolderHeaderHeight)
                 .clickable(onClick = onToggleExpand)
-                .background(colors.surface),
+                .background(colors.surface)
+                .padding(horizontal = GridHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
