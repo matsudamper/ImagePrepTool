@@ -49,6 +49,7 @@ compose.desktop {
 
             windows {
                 menuGroup = "ImagePrepTool"
+                iconFile.set(project.file("icons/app.ico"))
                 upgradeUuid = "18189999-4335-4149-8624-9A27244E9F91"
                 console = false
                 perUserInstall = true
