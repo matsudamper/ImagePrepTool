@@ -45,7 +45,7 @@ import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.awtTransferable
 import androidx.compose.ui.unit.dp
-import java.awt.Component
+import java.awt.Window
 import java.awt.datatransfer.DataFlavor
 import java.io.File
 import java.io.IOException
@@ -69,7 +69,7 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 fun App(
     viewModel: ImagePrepViewModel,
-    dialogParent: Component?,
+    dialogParent: Window?,
     exitApp: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -99,13 +99,17 @@ fun App(
     val actions = remember(listener, dialogParent) {
         AppActions(
             openFolder = {
-                DesktopDialogs.pickDirectory(dialogParent, "画像のあるフォルダを選択", latestUiState.pickerInitialDirectory)
-                    ?.let(listener::openFolder)
+                scope.launch {
+                    DesktopDialogs.pickDirectory(dialogParent, "画像のあるフォルダを選択", latestUiState.pickerInitialDirectory)
+                        ?.let(listener::openFolder)
+                }
             },
             pickImages = {
-                DesktopDialogs.pickImages(dialogParent, latestUiState.pickerInitialDirectory)
-                    .takeIf { it.isNotEmpty() }
-                    ?.let(listener::addFiles)
+                scope.launch {
+                    DesktopDialogs.pickImages(dialogParent, latestUiState.pickerInitialDirectory)
+                        .takeIf { it.isNotEmpty() }
+                        ?.let(listener::addFiles)
+                }
             },
             showMessage = { message -> scope.launch { snackbar.showSnackbar(message) } },
         )
@@ -223,11 +227,12 @@ private fun droppedFiles(event: DragAndDropEvent): List<File> {
 private fun Workspace(
     uiState: ImagePrepUiState,
     actions: AppActions,
-    dialogParent: Component?,
+    dialogParent: Window?,
     onGoHome: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
+    val scope = rememberCoroutineScope()
     Column(modifier.fillMaxSize()) {
         TopBar(actions, onGoHome)
         Row(Modifier.weight(1f).fillMaxWidth()) {
@@ -274,8 +279,10 @@ private fun Workspace(
                 onOptionsChange = uiState.listener::updateOptions,
                 onInputValidityChange = uiState.listener::setInputValid,
                 onChooseOutput = {
-                    DesktopDialogs.pickDirectory(dialogParent, "書き出し先のフォルダを選択", uiState.outputDirectory)
-                        ?.let(uiState.listener::chooseOutputDirectory)
+                    scope.launch {
+                        DesktopDialogs.pickDirectory(dialogParent, "書き出し先のフォルダを選択", uiState.outputDirectory)
+                            ?.let(uiState.listener::chooseOutputDirectory)
+                    }
                 },
                 onResetOutput = uiState.listener::resetOutputDirectory,
                 onNoticeAction = { action ->

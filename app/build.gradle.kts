@@ -18,6 +18,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
     implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.11.0")
+    implementation("io.github.vinceglb:filekit-dialogs:0.16.0")
     testImplementation(kotlin("test"))
 }
 
