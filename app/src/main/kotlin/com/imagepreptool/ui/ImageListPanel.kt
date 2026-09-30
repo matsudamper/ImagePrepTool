@@ -113,7 +113,7 @@ fun ImageListPanel(
     val density = LocalDensity.current
     val folderHeaderHeightPx = with(density) { FolderHeaderHeight.roundToPx() }
 
-    LaunchedEffect(focusedFile) {
+    LaunchedEffect(focusedFile, collapsedFolders) {
         val index = focusedFile?.let { gridIndexOf(imageGroups, collapsedFolders, it) } ?: return@LaunchedEffect
         val visible = gridState.layoutInfo.visibleItemsInfo
         // 上端に固定された見出しの下に隠れている画像は見えていない扱いにする
