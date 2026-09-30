@@ -186,7 +186,7 @@ fun ImageListPanel(
                     FolderHeader(
                         group = group,
                         expanded = expanded,
-                        onToggleExpanded = {
+                        onToggleExpand = {
                             collapsedFolders = if (expanded) collapsedFolders + group.folder else collapsedFolders - group.folder
                         },
                         onOpen = { onOpenFolder(group.folder) },
@@ -270,7 +270,7 @@ private val GridHorizontalPadding = 12.dp
 private val GridColumnSpacing = 8.dp
 
 @Composable
-private fun FolderHeader(group: ImageGroup, expanded: Boolean, onToggleExpanded: () -> Unit, onOpen: () -> Unit, onRemove: () -> Unit) {
+private fun FolderHeader(group: ImageGroup, expanded: Boolean, onToggleExpand: () -> Unit, onOpen: () -> Unit, onRemove: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     ContextMenuArea(
         items = {
@@ -284,7 +284,7 @@ private fun FolderHeader(group: ImageGroup, expanded: Boolean, onToggleExpanded:
             modifier = Modifier
                 .fillMaxWidth()
                 .height(FolderHeaderHeight)
-                .clickable(onClick = onToggleExpanded)
+                .clickable(onClick = onToggleExpand)
                 .background(colors.surface),
             verticalAlignment = Alignment.CenterVertically,
         ) {
