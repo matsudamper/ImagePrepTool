@@ -270,7 +270,6 @@ private fun Workspace(
                 isCustomOutputDirectory = uiState.isCustomOutputDirectory,
                 notices = uiState.notices,
                 exportCount = uiState.exportCount,
-                isExportingSelection = uiState.isExportingSelection,
                 canExport = uiState.canExport,
                 onOptionsChange = uiState.listener::updateOptions,
                 onInputValidityChange = uiState.listener::setInputValid,
