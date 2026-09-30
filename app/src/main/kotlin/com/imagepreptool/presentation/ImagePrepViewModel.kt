@@ -3,7 +3,9 @@ package com.imagepreptool.presentation
 import androidx.compose.ui.graphics.toComposeImageBitmap
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import java.awt.image.BufferedImage
 import java.io.File
+import java.io.IOException
 import java.util.Collections
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -35,8 +37,10 @@ import com.imagepreptool.model.CaptionField
 import com.imagepreptool.model.ConflictPolicy
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.ProcessResult
+import com.imagepreptool.service.CaptionRenderer
 import com.imagepreptool.service.CaptionTemplate
 import com.imagepreptool.service.ExifService
 import com.imagepreptool.service.ExternalToolChecker
@@ -585,35 +589,67 @@ class ImagePrepViewModel(
             )
         }
 
-        viewModelStateFlow.map { it.options }.distinctUntilChanged().collectLatestSafe { options ->
+        // 非 HEIF 画像はツール確認前に開かれることがあり、cwebp が見つかったら WebP のプレビューを作り直す
+        viewModelStateFlow.map { it.options to (it.tools ?: tools) }.distinctUntilChanged().collectLatestSafe { (options, currentTools) ->
             mutate { it.copy(preview = it.preview.copy(loading = true)) }
-            delay(80)
+            val outputFormat = OutputPlanner.resolveFormat(file, options.outputFormat)
+            // cwebp は外部プロセスで重いため、品質スライダー操作中は待ってからまとめてエンコードする
+            delay(if (outputFormat == OutputFormat.Webp) 300 else 80)
             val outputSize = Resizer.targetSize(source.loaded.size, options)
             val image = source.loaded.image
             val renderSize = Resizer.fitWithin(outputSize, image.width, image.height)
-            val processor = ImageProcessor(tools)
+            val processor = ImageProcessor(currentTools)
             val caption = if (options.captionEnabled) {
                 CaptionTemplate.render(options.captionTemplate, source.fields).takeIf { it.isNotBlank() }
             } else {
                 null
             }
-            val outputFormat = OutputPlanner.resolveFormat(file, options.outputFormat)
-            val bitmap = withContext(Dispatchers.Default) {
-                val rendered = processor.render(image, caption, options, renderSize)
-                val shown = if (outputFormat == OutputFormat.Jpeg && rendered.colorModel.hasAlpha()) ImageEncoder.flattenOnWhite(rendered) else rendered
-                shown.toComposeImageBitmap()
+            val rendered = runInterruptible(Dispatchers.Default) {
+                renderWithOutputQuality(processor, image, caption, options, renderSize, outputFormat, currentTools)
             }
+            val bitmap = withContext(Dispatchers.Default) { rendered.image.toComposeImageBitmap() }
             mutate {
                 it.copy(
                     preview = it.preview.copy(
                         processed = bitmap,
                         outputSize = outputSize,
                         outputFormat = outputFormat,
+                        outputByteSize = rendered.encodedByteSize.takeIf { renderSize == outputSize },
                         loading = false,
                     ),
                 )
             }
         }
+    }
+
+    private class RenderedPreview(val image: BufferedImage, val encodedByteSize: Long?)
+
+    /**
+     * 書き出しと同じ形式・品質でエンコードした劣化具合をプレビューに反映する。
+     * 画質の劣化で文字が読みにくくならないよう、キャプションはエンコード後に重ねる
+     */
+    private fun renderWithOutputQuality(
+        processor: ImageProcessor,
+        image: BufferedImage,
+        caption: String?,
+        options: EditOptions,
+        renderSize: ImageSize,
+        outputFormat: OutputFormat,
+        tools: ExternalTools,
+    ): RenderedPreview {
+        val resized = processor.render(image, null, options, renderSize)
+        val encoded = try {
+            ImageEncoder.encodeForPreview(resized, outputFormat, options.quality, tools)
+        } catch (e: IOException) {
+            null
+        }
+        val degraded = when {
+            encoded != null -> encoded.image
+            outputFormat == OutputFormat.Jpeg && resized.colorModel.hasAlpha() -> ImageEncoder.flattenOnWhite(resized)
+            else -> resized
+        }
+        if (caption != null) CaptionRenderer.draw(degraded, caption, options)
+        return RenderedPreview(degraded, encoded?.byteSize)
     }
 
     // endregion
@@ -647,6 +683,7 @@ private val EmptyPreview = PreviewState(
     originalSize = null,
     outputSize = null,
     outputFormat = null,
+    outputByteSize = null,
     captionFields = mapOf(),
     loading = false,
     error = null,
@@ -689,7 +726,7 @@ internal data class ImagePrepViewModelState(
     )
 
     val exportTargets: List<ImageItem>
-        get() = if (isSelectionMode) images.filter { it.file in selection } else images
+        get() = images.filter { it.file in effectiveSelection }
 
     val defaultOutputDir: File?
         get() = images.firstOrNull()?.file?.folder?.let { File(it, "output") }

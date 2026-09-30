@@ -91,7 +91,6 @@ fun SettingsPanel(
     isCustomOutputDirectory: Boolean,
     notices: List<Notice>,
     exportCount: Int,
-    isExportingSelection: Boolean,
     canExport: Boolean,
     onOptionsChange: ((EditOptions) -> EditOptions) -> Unit,
     onInputValidityChange: (String, Boolean) -> Unit,
@@ -136,7 +135,7 @@ fun SettingsPanel(
             ) {
                 Icon(painterResource(Res.drawable.ic_file_upload), null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(if (isExportingSelection) "選択中の $exportCount 枚を書き出す" else "$exportCount 枚を書き出す")
+                Text("選択中の $exportCount 枚を書き出す")
             }
             Text(
                 "Ctrl+Enter で書き出し",
@@ -175,7 +174,7 @@ private fun SizeSection(
                         modifier = Modifier.width(112.dp),
                     )
                     Row(Modifier.height(36.dp), verticalAlignment = Alignment.CenterVertically) {
-                        listOf(1080, 2048, 3840).forEach { preset ->
+                        listOf(1920, 2048, 3840).forEach { preset ->
                             PresetChip(
                                 label = if (preset == 3840) "4K" else preset.toString(),
                                 selected = options.longEdge == preset,
