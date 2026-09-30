@@ -80,7 +80,7 @@ object ExifService {
             ?.firstOrNull(ExifReader::startsWithJpegExifPreamble)
             ?: return null
         val start = ExifReader.JPEG_SEGMENT_PREAMBLE.length + offset
-        if (start + length > exifSegment.size) return null
+        if (start.toLong() + length > exifSegment.size) return null
         val bytes = exifSegment.copyOfRange(start, start + length)
         val jpeg = metadata.getFirstDirectoryOfType(JpegDirectory::class.java)
         val width = jpeg?.intOrNull(JpegDirectory.TAG_IMAGE_WIDTH)?.takeIf { it > 0 }

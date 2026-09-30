@@ -39,8 +39,15 @@ object ThumbnailLoader {
 
     fun cached(file: File): ThumbnailState? = cache[key(file)]
 
+    /** 先行表示用なので、失敗しても例外を投げず null を返す（親の本体読み込みを巻き込まないため） */
     suspend fun loadEmbedded(file: File): ThumbnailState.Ready? = runInterruptible(embeddedDispatcher) {
-        ImageLoader.loadEmbeddedThumbnail(file)?.let { ThumbnailState.Ready(it.toComposeImageBitmap()) }
+        try {
+            ImageLoader.loadEmbeddedThumbnail(file)?.let { ThumbnailState.Ready(it.toComposeImageBitmap()) }
+        } catch (e: InterruptedException) {
+            throw e
+        } catch (e: Exception) {
+            null
+        }
     }
 
     suspend fun load(file: File, tools: ExternalTools): ThumbnailState {
