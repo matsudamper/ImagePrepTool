@@ -174,7 +174,7 @@ private fun SizeSection(
                         modifier = Modifier.width(112.dp),
                     )
                     Row(Modifier.height(36.dp), verticalAlignment = Alignment.CenterVertically) {
-                        listOf(1080, 2048, 3840).forEach { preset ->
+                        listOf(1920, 2048, 3840).forEach { preset ->
                             PresetChip(
                                 label = if (preset == 3840) "4K" else preset.toString(),
                                 selected = options.longEdge == preset,
