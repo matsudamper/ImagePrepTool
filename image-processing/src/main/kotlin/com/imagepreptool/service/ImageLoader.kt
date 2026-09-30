@@ -2,12 +2,16 @@ package com.imagepreptool.service
 
 import java.awt.geom.AffineTransform
 import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
 import java.nio.file.Files
 import javax.imageio.ImageIO
 import javax.imageio.ImageReader
+import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
 import com.imagepreptool.model.ExternalTool
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.ImageSize
@@ -21,6 +25,7 @@ object ImageLoader {
 
     private const val SMOOTH_DOWNSCALE_DECODE_FACTOR = 2
 
+    private val jpegExtensions = setOf("jpg", "jpeg")
     val standardExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
     val heifExtensions = setOf("heic", "heif", "hif")
     val supportedExtensions = standardExtensions + heifExtensions
@@ -56,6 +61,17 @@ object ImageLoader {
         val oriented = applyOrientation(normalize(decoded), orientation)
         val size = if (orientation >= 5) ImageSize(rawSize.height, rawSize.width) else rawSize
         return LoadedImage(fitWithin(oriented, maxDimension), size)
+    }
+
+    /**
+     * JPEG の EXIF に埋め込まれた縮小画像を向き補正して返す。無ければ null。
+     * 本体をデコードするより桁違いに速いので、本来のサムネイルができるまでのつなぎに使う
+     */
+    fun loadEmbeddedThumbnail(file: File): BufferedImage? {
+        if (file.extension.lowercase() !in jpegExtensions) return null
+        val thumbnail = ExifService.readEmbeddedThumbnail(file) ?: return null
+        val decoded = runCatching { ImageIO.read(ByteArrayInputStream(thumbnail.bytes)) }.getOrNull() ?: return null
+        return applyOrientation(cropToAspect(normalize(decoded), thumbnail.imageSize), thumbnail.orientation)
     }
 
     private fun decode(file: File, maxDimension: Int?, smoothDownscale: Boolean): Pair<BufferedImage, ImageSize> {
@@ -145,6 +161,20 @@ object ImageLoader {
         g.drawImage(image, transform, null)
         g.dispose()
         return out
+    }
+
+    /** 縦横比が本体と違う埋め込み画像は上下左右に黒帯を含むことがあるため、本体の比率に中央で切り抜く */
+    private fun cropToAspect(image: BufferedImage, imageSize: ImageSize?): BufferedImage {
+        if (imageSize == null) return image
+        val targetAspect = imageSize.width.toDouble() / imageSize.height
+        val croppedWidth = min(image.width, (image.height * targetAspect).roundToInt()).coerceAtLeast(1)
+        val croppedHeight = min(image.height, (image.width / targetAspect).roundToInt()).coerceAtLeast(1)
+        if (abs(croppedWidth - image.width) <= 1 && abs(croppedHeight - image.height) <= 1) return image
+        return BufferedImage(croppedWidth, croppedHeight, image.type).also { out ->
+            val g = out.createGraphics()
+            g.drawImage(image, -(image.width - croppedWidth) / 2, -(image.height - croppedHeight) / 2, null)
+            g.dispose()
+        }
     }
 
     private fun fitWithin(image: BufferedImage, maxDimension: Int?): BufferedImage {

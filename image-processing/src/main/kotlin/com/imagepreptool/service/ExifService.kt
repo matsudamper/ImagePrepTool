@@ -7,11 +7,20 @@ import java.util.TimeZone
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import com.drew.imaging.ImageMetadataReader
+import com.drew.imaging.jpeg.JpegSegmentReader
+import com.drew.imaging.jpeg.JpegSegmentType
 import com.drew.metadata.Directory
 import com.drew.metadata.Metadata
 import com.drew.metadata.exif.ExifIFD0Directory
+import com.drew.metadata.exif.ExifReader
 import com.drew.metadata.exif.ExifSubIFDDirectory
+import com.drew.metadata.exif.ExifThumbnailDirectory
+import com.drew.metadata.jpeg.JpegDirectory
 import com.imagepreptool.model.CaptionField
+import com.imagepreptool.model.ImageSize
+
+/** EXIF に埋め込まれた縮小画像。[imageSize] は向き補正前の本体画像サイズ */
+class EmbeddedThumbnail(val bytes: ByteArray, val orientation: Int, val imageSize: ImageSize?)
 
 object ExifService {
 
@@ -57,14 +66,37 @@ object ExifService {
     /** EXIF Orientation（1〜8）。無ければ 1 */
     fun readOrientation(file: File): Int {
         val metadata = readMetadata(file) ?: return 1
-        return metadata.getDirectoriesOfType(ExifIFD0Directory::class.java)
-            .firstNotNullOfOrNull { it.intOrNull(ExifIFD0Directory.TAG_ORIENTATION) }
-            ?.takeIf { it in 1..8 }
-            ?: 1
+        return metadata.orientation()
+    }
+
+    fun readEmbeddedThumbnail(file: File): EmbeddedThumbnail? {
+        val metadata = readMetadata(file) ?: return null
+        val thumbnailDirectory = metadata.getFirstDirectoryOfType(ExifThumbnailDirectory::class.java) ?: return null
+        val offset = thumbnailDirectory.intOrNull(ExifThumbnailDirectory.TAG_THUMBNAIL_OFFSET)?.takeIf { it >= 0 } ?: return null
+        val length = thumbnailDirectory.intOrNull(ExifThumbnailDirectory.TAG_THUMBNAIL_LENGTH)?.takeIf { it > 0 } ?: return null
+        // オフセットは APP1 内の TIFF ヘッダ起点なので、ファイル位置ではなくセグメントから切り出す
+        val exifSegment = runCatching { JpegSegmentReader.readSegments(file, listOf(JpegSegmentType.APP1)) }.getOrNull()
+            ?.getSegments(JpegSegmentType.APP1)
+            ?.firstOrNull(ExifReader::startsWithJpegExifPreamble)
+            ?: return null
+        val start = ExifReader.JPEG_SEGMENT_PREAMBLE.length + offset
+        if (start + length > exifSegment.size) return null
+        val bytes = exifSegment.copyOfRange(start, start + length)
+        val jpeg = metadata.getFirstDirectoryOfType(JpegDirectory::class.java)
+        val width = jpeg?.intOrNull(JpegDirectory.TAG_IMAGE_WIDTH)?.takeIf { it > 0 }
+        val height = jpeg?.intOrNull(JpegDirectory.TAG_IMAGE_HEIGHT)?.takeIf { it > 0 }
+        val imageSize = if (width != null && height != null) ImageSize(width, height) else null
+        return EmbeddedThumbnail(bytes, metadata.orientation(), imageSize)
     }
 
     private fun readMetadata(file: File): Metadata? =
         runCatching { ImageMetadataReader.readMetadata(file) }.getOrNull()
+
+    private fun Metadata.orientation(): Int =
+        getDirectoriesOfType(ExifIFD0Directory::class.java)
+            .firstNotNullOfOrNull { it.intOrNull(ExifIFD0Directory.TAG_ORIENTATION) }
+            ?.takeIf { it in 1..8 }
+            ?: 1
 
     private fun Directory.string(tag: Int): String? =
         getString(tag)?.trim()?.trimEnd('\u0000')?.takeIf { it.isNotBlank() }

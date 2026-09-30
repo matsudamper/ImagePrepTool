@@ -8,6 +8,7 @@ import androidx.compose.ui.graphics.toComposeImageBitmap
 import java.io.File
 import java.util.Collections
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runInterruptible
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.service.ImageLoader
@@ -24,6 +25,10 @@ object ThumbnailLoader {
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
     private val dispatcher = Dispatchers.IO.limitedParallelism(Runtime.getRuntime().availableProcessors().coerceAtLeast(2))
 
+    // 本体のデコード待ちの列に並ぶと先行表示が間に合わないため、別枠で読む
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    private val embeddedDispatcher = Dispatchers.IO.limitedParallelism(2)
+
     private val cache = Collections.synchronizedMap(
         object : LinkedHashMap<String, ThumbnailState>(64, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ThumbnailState>?) = size > 400
@@ -31,6 +36,12 @@ object ThumbnailLoader {
     )
 
     private fun key(file: File) = "${file.absolutePath}:${file.lastModified()}"
+
+    fun cached(file: File): ThumbnailState? = cache[key(file)]
+
+    suspend fun loadEmbedded(file: File): ThumbnailState.Ready? = runInterruptible(embeddedDispatcher) {
+        ImageLoader.loadEmbeddedThumbnail(file)?.let { ThumbnailState.Ready(it.toComposeImageBitmap()) }
+    }
 
     suspend fun load(file: File, tools: ExternalTools): ThumbnailState {
         cache[key(file)]?.let { return it }
@@ -55,5 +66,13 @@ fun rememberThumbnail(file: File, tools: ExternalTools?): State<ThumbnailState> 
     produceState<ThumbnailState>(ThumbnailState.Loading, file, tools) {
         // ツール確認前に HEIC を読むと失敗扱いになるので待つ
         if (tools == null && ImageLoader.isHeif(file)) return@produceState
-        value = ThumbnailLoader.load(file, tools ?: ExternalTools.None)
+        val cached = ThumbnailLoader.cached(file)
+        if (cached != null) {
+            value = cached
+        } else {
+            val embedded = launch { ThumbnailLoader.loadEmbedded(file)?.let { value = it } }
+            val loaded = ThumbnailLoader.load(file, tools ?: ExternalTools.None)
+            embedded.cancel()
+            value = loaded
+        }
     }
