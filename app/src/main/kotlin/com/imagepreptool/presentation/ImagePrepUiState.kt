@@ -70,7 +70,6 @@ sealed interface ExportState {
 
 enum class NoticeAction(val label: String) {
     RemoveUnreadable("一覧から削除"),
-    ShowTools("詳細"),
 }
 
 /** スナックバーで一度だけ表示するメッセージ */

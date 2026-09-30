@@ -756,7 +756,7 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
         if (tools != null) {
             val needsWebp = targets.any { OutputPlanner.resolveFormat(it.file, options.outputFormat) == OutputFormat.Webp }
             if (needsWebp && !tools.canWriteWebp) {
-                add(Notice("WebP で書き出すには cwebp が必要です。形式を変更するか、cwebp をインストールしてください。", blocking = true, action = NoticeAction.ShowTools))
+                add(Notice("WebP で書き出すには cwebp が必要です。形式を変更するか、cwebp をインストールしてください。", blocking = true, action = null))
             }
             val unreadable = targets.count { !canRead(it.file, tools) }
             if (unreadable > 0) {
