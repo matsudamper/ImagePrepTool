@@ -29,6 +29,7 @@ class UiStateTest {
     fun webpWithoutCwebpBlocksExport() {
         val state = ImagePrepViewModelState(
             images = listOf(ImageItem(File("/photos/a.jpg"))),
+            selection = setOf(File("/photos/a.jpg")),
             options = EditOptions(outputFormat = OutputFormat.Webp),
             tools = ExternalTools.None,
         ).toUiState(listener)
@@ -38,9 +39,9 @@ class UiStateTest {
 
     @Test
     fun toolDependentExportWaitsForToolCheck() {
-        val heic = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.heic"))), tools = null).toUiState(listener)
+        val heic = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.heic"))), selection = setOf(File("/photos/a.heic")), tools = null).toUiState(listener)
         assertFalse(heic.canExport)
-        val jpeg = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), tools = null).toUiState(listener)
+        val jpeg = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), selection = setOf(File("/photos/a.jpg")), tools = null).toUiState(listener)
         assertTrue(jpeg.canExport)
     }
 
@@ -84,6 +85,7 @@ class UiStateTest {
         )
         vm.addFilesForTest(listOf(File("/photos/a.jpg"), File("/photos/b.heic")))
         vm.setToolsForTest(ExternalTools.None)
+        vm.snapshotForTest().listener.selectAll()
         assertTrue(vm.snapshotForTest().notices.any { it.action == NoticeAction.RemoveUnreadable })
         vm.snapshotForTest().listener.removeUnreadable()
         val ui = vm.snapshotForTest()
@@ -187,8 +189,10 @@ class UiStateTest {
 
     @Test
     fun imagesFromMultipleFoldersAreGroupedAndExportedTogether() {
+        val files = listOf("/trip/1.jpg", "/trip/2.jpg", "/misc/1.jpg").map(::File)
         val state = ImagePrepViewModelState(
-            images = listOf("/trip/1.jpg", "/trip/2.jpg", "/misc/1.jpg").map { ImageItem(File(it)) },
+            images = files.map(::ImageItem),
+            selection = files.toSet(),
         ).toUiState(listener)
         assertEquals(listOf(File("/trip"), File("/misc")), state.imageGroups.map { it.folder })
         assertEquals(listOf(2, 1), state.imageGroups.map { it.images.size })

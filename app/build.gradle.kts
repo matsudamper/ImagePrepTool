@@ -53,7 +53,7 @@ compose.desktop {
                 upgradeUuid = "18189999-4335-4149-8624-9A27244E9F91"
                 console = false
                 perUserInstall = true
-                shortcut = true
+                shortcut = false
                 menu = true
             }
         }
