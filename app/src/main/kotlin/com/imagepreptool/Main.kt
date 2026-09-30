@@ -18,7 +18,7 @@ import javax.swing.UIManager
 import com.imagepreptool.presentation.ExportState
 import com.imagepreptool.presentation.ImagePrepViewModel
 import com.imagepreptool.resources.Res
-import com.imagepreptool.resources.ic_photo_library
+import com.imagepreptool.resources.ic_app_icon
 import com.imagepreptool.ui.App
 import com.imagepreptool.ui.DesktopDialogs
 import com.imagepreptool.ui.theme.AppTheme
@@ -40,7 +40,7 @@ fun main(args: Array<String>) {
         Window(
             onCloseRequest = exitApp,
             title = "ImagePrepTool",
-            icon = painterResource(Res.drawable.ic_photo_library),
+            icon = painterResource(Res.drawable.ic_app_icon),
             state = state,
             onPreviewKeyEvent = { event ->
                 val ctrl = event.isCtrlPressed || event.isMetaPressed
