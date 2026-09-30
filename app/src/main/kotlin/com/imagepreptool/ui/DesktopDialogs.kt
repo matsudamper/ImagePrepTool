@@ -1,38 +1,32 @@
 package com.imagepreptool.ui
 
-import java.awt.Component
 import java.awt.Desktop
+import java.awt.Window
 import java.io.File
 import java.io.IOException
-import javax.swing.JFileChooser
-import javax.swing.filechooser.FileNameExtensionFilter
 import com.imagepreptool.service.ImageLoader
+import io.github.vinceglb.filekit.FileKit
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitDialogParent
+import io.github.vinceglb.filekit.dialogs.FileKitDialogSettings
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.openDirectoryPicker
+import io.github.vinceglb.filekit.dialogs.openFilePicker
 
 object DesktopDialogs {
 
-    fun pickDirectory(parent: Component?, title: String, initial: File? = null): File? {
-        val chooser = JFileChooser(initial?.takeIf { it.exists() } ?: initial?.parentFile).apply {
-            dialogTitle = title
-            fileSelectionMode = JFileChooser.DIRECTORIES_ONLY
-            isAcceptAllFileFilterUsed = false
-            approveButtonText = "このフォルダを選択"
-        }
-        return if (chooser.showOpenDialog(parent) == JFileChooser.APPROVE_OPTION) chooser.selectedFile else null
-    }
+    suspend fun pickDirectory(parent: Window?, title: String, initial: File? = null): File? = FileKit.openDirectoryPicker(
+        directory = initial?.toExistingDirectory(),
+        dialogSettings = dialogSettings(parent, title),
+    )?.file
 
-    fun pickImages(parent: Component?, initial: File? = null): List<File> {
-        val chooser = JFileChooser(initial).apply {
-            dialogTitle = "画像を追加"
-            fileSelectionMode = JFileChooser.FILES_ONLY
-            isMultiSelectionEnabled = true
-            fileFilter = FileNameExtensionFilter(
-                "画像ファイル（${ImageLoader.supportedExtensions.sorted().joinToString(", ")}）",
-                *ImageLoader.supportedExtensions.toTypedArray(),
-            )
-            approveButtonText = "追加"
-        }
-        return if (chooser.showOpenDialog(parent) == JFileChooser.APPROVE_OPTION) chooser.selectedFiles.toList() else emptyList()
-    }
+    suspend fun pickImages(parent: Window?, initial: File? = null): List<File> = FileKit.openFilePicker(
+        type = FileKitType.File(ImageLoader.supportedExtensions),
+        mode = FileKitMode.Multiple(),
+        directory = initial?.toExistingDirectory(),
+        dialogSettings = dialogSettings(parent, "画像を追加"),
+    ).orEmpty().map { it.file }
 
     /** エクスプローラーなどでフォルダを開く。失敗したらメッセージを返す */
     fun openFolder(dir: File): String? = try {
@@ -59,5 +53,15 @@ object DesktopDialogs {
             }
         }
         return openFolder(file.parentFile)
+    }
+
+    private fun dialogSettings(parent: Window?, title: String) = FileKitDialogSettings(
+        title = title,
+        parent = parent?.let(FileKitDialogParent::awt),
+    )
+
+    private fun File.toExistingDirectory(): PlatformFile? {
+        val directory = if (isDirectory) this else parentFile
+        return if (directory?.isDirectory == true) PlatformFile(directory) else null
     }
 }
