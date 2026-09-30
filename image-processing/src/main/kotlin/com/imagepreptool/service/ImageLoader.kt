@@ -36,14 +36,15 @@ object ImageLoader {
     /**
      * 画像を読み込み、EXIF の向きを反映した RGB / ARGB 画像にする。
      * @param maxDimension 指定すると長辺がこの値程度になるよう縮小して読む（サムネイル・プレビュー用）
+     * @param subsampleOnDecode 画素を間引いて高速に読む。ジャギーが出るため小さく表示するサムネイル向け
      */
-    fun load(file: File, tools: ExternalTools, maxDimension: Int? = null): LoadedImage {
+    fun load(file: File, tools: ExternalTools, maxDimension: Int? = null, subsampleOnDecode: Boolean = false): LoadedImage {
         if (!file.isFile) throw ImageLoadException("ファイルが見つかりません")
         if (isHeif(file)) return loadHeif(file, tools, maxDimension)
 
         val orientation = ExifService.readOrientation(file)
         val (decoded, rawSize) = try {
-            decode(file, maxDimension)
+            decode(file, maxDimension.takeIf { subsampleOnDecode })
         } catch (e: ImageLoadException) {
             throw e
         } catch (e: Exception) {
@@ -54,7 +55,7 @@ object ImageLoader {
         return LoadedImage(fitWithin(oriented, maxDimension), size)
     }
 
-    private fun decode(file: File, maxDimension: Int?): Pair<BufferedImage, ImageSize> {
+    private fun decode(file: File, subsampleTo: Int?): Pair<BufferedImage, ImageSize> {
         ImageIO.createImageInputStream(file).use { stream ->
             stream ?: throw ImageLoadException("ファイルを開けません")
             val reader: ImageReader = ImageIO.getImageReaders(stream).asSequence().firstOrNull()
@@ -64,8 +65,8 @@ object ImageLoader {
                 val width = reader.getWidth(0)
                 val height = reader.getHeight(0)
                 val param = reader.defaultReadParam
-                if (maxDimension != null) {
-                    val step = max(1, max(width, height) / maxDimension)
+                if (subsampleTo != null) {
+                    val step = max(1, max(width, height) / subsampleTo)
                     if (step > 1) param.setSourceSubsampling(step, step, 0, 0)
                 }
                 return reader.read(0, param) to ImageSize(width, height)
