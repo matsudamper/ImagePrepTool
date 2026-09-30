@@ -689,7 +689,7 @@ internal data class ImagePrepViewModelState(
     )
 
     val exportTargets: List<ImageItem>
-        get() = if (isSelectionMode) images.filter { it.file in selection } else images
+        get() = images.filter { it.file in effectiveSelection }
 
     val defaultOutputDir: File?
         get() = images.firstOrNull()?.file?.folder?.let { File(it, "output") }
