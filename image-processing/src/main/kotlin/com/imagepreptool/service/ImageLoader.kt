@@ -47,7 +47,7 @@ object ImageLoader {
 
         val orientation = ExifService.readOrientation(file)
         val (decoded, rawSize) = try {
-            decode(file, maxDimension?.let { if (smoothDownscale) it * SMOOTH_DOWNSCALE_DECODE_FACTOR else it })
+            decode(file, maxDimension, smoothDownscale)
         } catch (e: ImageLoadException) {
             throw e
         } catch (e: Exception) {
@@ -58,7 +58,7 @@ object ImageLoader {
         return LoadedImage(fitWithin(oriented, maxDimension), size)
     }
 
-    private fun decode(file: File, subsampleTo: Int?): Pair<BufferedImage, ImageSize> {
+    private fun decode(file: File, maxDimension: Int?, smoothDownscale: Boolean): Pair<BufferedImage, ImageSize> {
         ImageIO.createImageInputStream(file).use { stream ->
             stream ?: throw ImageLoadException("ファイルを開けません")
             val reader: ImageReader = ImageIO.getImageReaders(stream).asSequence().firstOrNull()
@@ -68,8 +68,8 @@ object ImageLoader {
                 val width = reader.getWidth(0)
                 val height = reader.getHeight(0)
                 val param = reader.defaultReadParam
-                if (subsampleTo != null) {
-                    val step = max(1, max(width, height) / subsampleTo)
+                if (maxDimension != null) {
+                    val step = subsampleStep(max(width, height), maxDimension, smoothDownscale)
                     if (step > 1) param.setSourceSubsampling(step, step, 0, 0)
                 }
                 return reader.read(0, param) to ImageSize(width, height)
@@ -77,6 +77,13 @@ object ImageLoader {
                 reader.dispose()
             }
         }
+    }
+
+    private fun subsampleStep(longSide: Int, maxDimension: Int, smoothDownscale: Boolean): Int {
+        if (!smoothDownscale) return max(1, longSide / maxDimension)
+        // 切り捨てだと上限の 2 倍近くまでフルデコードされるため、切り上げて上限以下に収める
+        val decodeLimit = maxDimension * SMOOTH_DOWNSCALE_DECODE_FACTOR
+        return max(1, (longSide + decodeLimit - 1) / decodeLimit)
     }
 
     private fun loadHeif(file: File, tools: ExternalTools, maxDimension: Int?): LoadedImage {
