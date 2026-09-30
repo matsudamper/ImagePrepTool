@@ -171,7 +171,9 @@ fun ImageListPanel(
                     val visibleGroups = imageGroups.filter { it.folder !in collapsedFolders }
                     val visibleFocusedFile = focusedFile?.takeIf { file -> visibleGroups.any { group -> group.images.any { it.file == file } } }
                     val moveFocusInVisible = { visibleDelta: Int ->
-                        onMoveFocus(focusDeltaInAllImages(imageGroups, visibleGroups, visibleFocusedFile, visibleDelta))
+                        if (visibleFocusedFile != null) {
+                            onMoveFocus(focusDeltaInAllImages(imageGroups, visibleGroups, visibleFocusedFile, visibleDelta))
+                        }
                     }
                     when (event.key) {
                         Key.DirectionLeft -> moveFocusInVisible(-1)
