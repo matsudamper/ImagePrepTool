@@ -165,12 +165,17 @@ fun ImageListPanel(
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     val columns = density.adaptiveColumnCount(gridState.layoutInfo.viewportSize.width)
+                    val visibleGroups = imageGroups.filter { it.folder !in collapsedFolders }
+                    val visibleFocusedFile = focusedFile?.takeIf { file -> visibleGroups.any { group -> group.images.any { it.file == file } } }
+                    val moveFocusInVisible = { visibleDelta: Int ->
+                        onMoveFocus(focusDeltaInAllImages(imageGroups, visibleGroups, visibleFocusedFile, visibleDelta))
+                    }
                     when (event.key) {
-                        Key.DirectionLeft -> onMoveFocus(-1)
-                        Key.DirectionRight -> onMoveFocus(1)
-                        Key.DirectionUp -> onMoveFocus(verticalMoveDelta(imageGroups, focusedFile, columns, downward = false))
-                        Key.DirectionDown -> onMoveFocus(verticalMoveDelta(imageGroups, focusedFile, columns, downward = true))
-                        Key.Delete -> if (isSelectionMode) onRemoveSelection() else focusedFile?.let(onRemove)
+                        Key.DirectionLeft -> moveFocusInVisible(-1)
+                        Key.DirectionRight -> moveFocusInVisible(1)
+                        Key.DirectionUp -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = false))
+                        Key.DirectionDown -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = true))
+                        Key.Delete -> if (isSelectionMode) onRemoveSelection() else visibleFocusedFile?.let(onRemove)
                         Key.Escape -> onClearSelection()
                         Key.A -> if (event.isCtrlPressed || event.isMetaPressed) onSelectAll() else return@onPreviewKeyEvent false
                         Key.Z -> if (event.isCtrlPressed || event.isMetaPressed) onUndoRemoval() else return@onPreviewKeyEvent false
@@ -230,6 +235,20 @@ private fun gridIndexOf(imageGroups: List<ImageGroup>, collapsedFolders: Set<Fil
         }
         .indexOf(file)
         .takeIf { it >= 0 }
+
+/** 折りたたまれたフォルダの画像を飛ばした移動枚数を、全画像の並びでの移動枚数に直す */
+internal fun focusDeltaInAllImages(
+    imageGroups: List<ImageGroup>,
+    visibleGroups: List<ImageGroup>,
+    visibleFocusedFile: File?,
+    visibleDelta: Int,
+): Int {
+    val allFiles = imageGroups.flatMap { group -> group.images.map { it.file } }
+    val visibleFiles = visibleGroups.flatMap { group -> group.images.map { it.file } }
+    val visibleIndex = visibleFiles.indexOf(visibleFocusedFile).takeIf { it >= 0 } ?: return 0
+    val target = visibleFiles.getOrNull(visibleIndex + visibleDelta) ?: return 0
+    return allFiles.indexOf(target) - allFiles.indexOf(visibleFocusedFile)
+}
 
 /**
  * 上下キーで移動する枚数。フォルダごとに見出しで行が改まるため、
