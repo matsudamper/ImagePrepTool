@@ -22,7 +22,7 @@ object ThumbnailLoader {
     private const val SIZE = 320
 
     @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-    private val dispatcher = Dispatchers.IO.limitedParallelism(3)
+    private val dispatcher = Dispatchers.IO.limitedParallelism(Runtime.getRuntime().availableProcessors().coerceAtLeast(2))
 
     private val cache = Collections.synchronizedMap(
         object : LinkedHashMap<String, ThumbnailState>(64, 0.75f, true) {
