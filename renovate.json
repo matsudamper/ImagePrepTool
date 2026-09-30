@@ -12,6 +12,16 @@
         "actions/*"
       ],
       "automerge": true
+    },
+    {
+      "matchPackageNames": [
+        "/^org\\.jetbrains\\.kotlin\\.plugin\\.serialization(?:[.:]|$)/",
+        "io.gitlab.arturbosch.detekt",
+        "io.nlopez.compose.rules:detekt",
+        "/^org\\.jetbrains\\.compose(?:[.:]|$)/",
+        "/^org\\.jetbrains\\.androidx(?:[.:]|$)/"
+      ],
+      "automerge": true
     }
   ]
 }

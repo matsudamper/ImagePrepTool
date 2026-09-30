@@ -15,7 +15,7 @@ allprojects {
     apply(plugin = "io.gitlab.arturbosch.detekt")
 
     dependencies {
-        "detektPlugins"("io.nlopez.compose.rules:detekt:0.4.23")
+        "detektPlugins"("io.nlopez.compose.rules:detekt:0.6.7")
     }
 
     configure<io.gitlab.arturbosch.detekt.extensions.DetektExtension> {

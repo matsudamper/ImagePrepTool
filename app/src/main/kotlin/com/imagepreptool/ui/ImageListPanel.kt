@@ -6,6 +6,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.hoverable
@@ -40,7 +41,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -60,11 +63,14 @@ import androidx.compose.ui.input.pointer.isMetaPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.offset
 import java.io.File
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.presentation.ImageGroup
@@ -102,12 +108,13 @@ fun ImageListPanel(
     val colors = MaterialTheme.colorScheme
     val gridState = rememberLazyGridState()
     val focusRequester = remember { FocusRequester() }
+    var collapsedFolders by remember { mutableStateOf(setOf<File>()) }
     val imageCount = imageGroups.sumOf { it.images.size }
     val density = LocalDensity.current
     val folderHeaderHeightPx = with(density) { FolderHeaderHeight.roundToPx() }
 
-    LaunchedEffect(focusedFile) {
-        val index = focusedFile?.let { gridIndexOf(imageGroups, it) } ?: return@LaunchedEffect
+    LaunchedEffect(focusedFile, collapsedFolders) {
+        val index = focusedFile?.let { gridIndexOf(imageGroups, collapsedFolders, it) } ?: return@LaunchedEffect
         val visible = gridState.layoutInfo.visibleItemsInfo
         // 上端に固定された見出しの下に隠れている画像は見えていない扱いにする
         val fullyVisible = visible.any { it.index == index } &&
@@ -161,12 +168,19 @@ fun ImageListPanel(
                 .onPreviewKeyEvent { event ->
                     if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
                     val columns = density.adaptiveColumnCount(gridState.layoutInfo.viewportSize.width)
+                    val visibleGroups = imageGroups.filter { it.folder !in collapsedFolders }
+                    val visibleFocusedFile = focusedFile?.takeIf { file -> visibleGroups.any { group -> group.images.any { it.file == file } } }
+                    val moveFocusInVisible = { visibleDelta: Int ->
+                        if (visibleFocusedFile != null) {
+                            onMoveFocus(focusDeltaInAllImages(imageGroups, visibleGroups, visibleFocusedFile, visibleDelta))
+                        }
+                    }
                     when (event.key) {
-                        Key.DirectionLeft -> onMoveFocus(-1)
-                        Key.DirectionRight -> onMoveFocus(1)
-                        Key.DirectionUp -> onMoveFocus(verticalMoveDelta(imageGroups, focusedFile, columns, downward = false))
-                        Key.DirectionDown -> onMoveFocus(verticalMoveDelta(imageGroups, focusedFile, columns, downward = true))
-                        Key.Delete -> if (isSelectionMode) onRemoveSelection() else focusedFile?.let(onRemove)
+                        Key.DirectionLeft -> moveFocusInVisible(-1)
+                        Key.DirectionRight -> moveFocusInVisible(1)
+                        Key.DirectionUp -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = false))
+                        Key.DirectionDown -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = true))
+                        Key.Delete -> if (isSelectionMode) onRemoveSelection() else visibleFocusedFile?.let(onRemove)
                         Key.Escape -> onClearSelection()
                         Key.A -> if (event.isCtrlPressed || event.isMetaPressed) onSelectAll() else return@onPreviewKeyEvent false
                         Key.Z -> if (event.isCtrlPressed || event.isMetaPressed) onUndoRemoval() else return@onPreviewKeyEvent false
@@ -177,14 +191,19 @@ fun ImageListPanel(
                 .focusable(),
         ) {
             imageGroups.forEach { group ->
+                val expanded = group.folder !in collapsedFolders
                 stickyHeader(key = "folder:${group.folder.absolutePath}", contentType = "folder") {
                     FolderHeader(
                         group = group,
+                        expanded = expanded,
+                        onToggleExpand = {
+                            collapsedFolders = if (expanded) collapsedFolders + group.folder else collapsedFolders - group.folder
+                        },
                         onOpen = { onOpenFolder(group.folder) },
                         onRemove = { onRemoveFolder(group.folder) },
                     )
                 }
-                items(group.images, key = { it.file.absolutePath }, contentType = { "image" }) { item ->
+                items(if (expanded) group.images else listOf(), key = { it.file.absolutePath }, contentType = { "image" }) { item ->
                     // 複数選択中の画像に対する操作は選択中の全画像に反映される
                     val inGroup = isSelectionMode && item.file in selectedFiles
                     val prefix = if (inGroup) "選択中の ${selectedFiles.size} 枚を" else ""
@@ -213,12 +232,28 @@ fun ImageListPanel(
     }
 }
 
-/** 見出しを含めたグリッド上の位置。見出しはフォルダごとに 1 つ入る */
-private fun gridIndexOf(imageGroups: List<ImageGroup>, file: File): Int? =
+/** 見出しを含めたグリッド上の位置。見出しはフォルダごとに 1 つ入り、折りたたまれたフォルダの画像は入らない */
+private fun gridIndexOf(imageGroups: List<ImageGroup>, collapsedFolders: Set<File>, file: File): Int? =
     imageGroups
-        .flatMap { group -> listOf(group.folder) + group.images.map { it.file } }
+        .flatMap { group ->
+            if (group.folder in collapsedFolders) listOf(group.folder) else listOf(group.folder) + group.images.map { it.file }
+        }
         .indexOf(file)
         .takeIf { it >= 0 }
+
+/** 折りたたまれたフォルダの画像を飛ばした移動枚数を、全画像の並びでの移動枚数に直す */
+internal fun focusDeltaInAllImages(
+    imageGroups: List<ImageGroup>,
+    visibleGroups: List<ImageGroup>,
+    visibleFocusedFile: File?,
+    visibleDelta: Int,
+): Int {
+    val allFiles = imageGroups.flatMap { group -> group.images.map { it.file } }
+    val visibleFiles = visibleGroups.flatMap { group -> group.images.map { it.file } }
+    val visibleIndex = visibleFiles.indexOf(visibleFocusedFile).takeIf { it >= 0 } ?: return 0
+    val target = visibleFiles.getOrNull(visibleIndex + visibleDelta) ?: return 0
+    return allFiles.indexOf(target) - allFiles.indexOf(visibleFocusedFile)
+}
 
 /**
  * 上下キーで移動する枚数。フォルダごとに見出しで行が改まるため、
@@ -253,13 +288,22 @@ private fun Density.adaptiveColumnCount(viewportWidthPx: Int): Int {
     return ((gridWidth + spacing) / (ThumbnailMinSize.roundToPx() + spacing)).coerceAtLeast(1)
 }
 
+/** 親の contentPadding を越えて左右いっぱいまで広げる */
+private fun Modifier.extendHorizontally(extension: Dp): Modifier = layout { measurable, constraints ->
+    val extensionPx = extension.roundToPx()
+    val placeable = measurable.measure(constraints.offset(horizontal = extensionPx * 2))
+    layout(constraints.maxWidth, placeable.height) {
+        placeable.place(-extensionPx, 0)
+    }
+}
+
 private val FolderHeaderHeight = 44.dp
 private val ThumbnailMinSize = 84.dp
 private val GridHorizontalPadding = 12.dp
 private val GridColumnSpacing = 8.dp
 
 @Composable
-private fun FolderHeader(group: ImageGroup, onOpen: () -> Unit, onRemove: () -> Unit) {
+private fun FolderHeader(group: ImageGroup, expanded: Boolean, onToggleExpand: () -> Unit, onOpen: () -> Unit, onRemove: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     ContextMenuArea(
         items = {
@@ -272,10 +316,19 @@ private fun FolderHeader(group: ImageGroup, onOpen: () -> Unit, onRemove: () -> 
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .extendHorizontally(GridHorizontalPadding)
                 .height(FolderHeaderHeight)
-                .background(colors.surface),
+                .clickable(onClick = onToggleExpand)
+                .background(colors.surface)
+                .padding(horizontal = GridHorizontalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Text(
+                if (expanded) "▼" else "▶",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.width(16.dp),
+            )
             Icon(painterResource(Res.drawable.ic_folder), null, tint = colors.primary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Tooltip(group.folder.path, modifier = Modifier.weight(1f)) {
