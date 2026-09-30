@@ -6,6 +6,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.hoverable
@@ -40,7 +41,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -102,12 +105,13 @@ fun ImageListPanel(
     val colors = MaterialTheme.colorScheme
     val gridState = rememberLazyGridState()
     val focusRequester = remember { FocusRequester() }
+    var collapsedFolders by remember { mutableStateOf(setOf<File>()) }
     val imageCount = imageGroups.sumOf { it.images.size }
     val density = LocalDensity.current
     val folderHeaderHeightPx = with(density) { FolderHeaderHeight.roundToPx() }
 
     LaunchedEffect(focusedFile) {
-        val index = focusedFile?.let { gridIndexOf(imageGroups, it) } ?: return@LaunchedEffect
+        val index = focusedFile?.let { gridIndexOf(imageGroups, collapsedFolders, it) } ?: return@LaunchedEffect
         val visible = gridState.layoutInfo.visibleItemsInfo
         // 上端に固定された見出しの下に隠れている画像は見えていない扱いにする
         val fullyVisible = visible.any { it.index == index } &&
@@ -177,14 +181,19 @@ fun ImageListPanel(
                 .focusable(),
         ) {
             imageGroups.forEach { group ->
+                val expanded = group.folder !in collapsedFolders
                 stickyHeader(key = "folder:${group.folder.absolutePath}", contentType = "folder") {
                     FolderHeader(
                         group = group,
+                        expanded = expanded,
+                        onToggleExpanded = {
+                            collapsedFolders = if (expanded) collapsedFolders + group.folder else collapsedFolders - group.folder
+                        },
                         onOpen = { onOpenFolder(group.folder) },
                         onRemove = { onRemoveFolder(group.folder) },
                     )
                 }
-                items(group.images, key = { it.file.absolutePath }, contentType = { "image" }) { item ->
+                items(if (expanded) group.images else listOf(), key = { it.file.absolutePath }, contentType = { "image" }) { item ->
                     // 複数選択中の画像に対する操作は選択中の全画像に反映される
                     val inGroup = isSelectionMode && item.file in selectedFiles
                     val prefix = if (inGroup) "選択中の ${selectedFiles.size} 枚を" else ""
@@ -213,10 +222,12 @@ fun ImageListPanel(
     }
 }
 
-/** 見出しを含めたグリッド上の位置。見出しはフォルダごとに 1 つ入る */
-private fun gridIndexOf(imageGroups: List<ImageGroup>, file: File): Int? =
+/** 見出しを含めたグリッド上の位置。見出しはフォルダごとに 1 つ入り、折りたたまれたフォルダの画像は入らない */
+private fun gridIndexOf(imageGroups: List<ImageGroup>, collapsedFolders: Set<File>, file: File): Int? =
     imageGroups
-        .flatMap { group -> listOf(group.folder) + group.images.map { it.file } }
+        .flatMap { group ->
+            if (group.folder in collapsedFolders) listOf(group.folder) else listOf(group.folder) + group.images.map { it.file }
+        }
         .indexOf(file)
         .takeIf { it >= 0 }
 
@@ -259,7 +270,7 @@ private val GridHorizontalPadding = 12.dp
 private val GridColumnSpacing = 8.dp
 
 @Composable
-private fun FolderHeader(group: ImageGroup, onOpen: () -> Unit, onRemove: () -> Unit) {
+private fun FolderHeader(group: ImageGroup, expanded: Boolean, onToggleExpanded: () -> Unit, onOpen: () -> Unit, onRemove: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     ContextMenuArea(
         items = {
@@ -273,9 +284,16 @@ private fun FolderHeader(group: ImageGroup, onOpen: () -> Unit, onRemove: () -> 
             modifier = Modifier
                 .fillMaxWidth()
                 .height(FolderHeaderHeight)
+                .clickable(onClick = onToggleExpanded)
                 .background(colors.surface),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            Text(
+                if (expanded) "▼" else "▶",
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.onSurfaceVariant,
+                modifier = Modifier.width(16.dp),
+            )
             Icon(painterResource(Res.drawable.ic_folder), null, tint = colors.primary, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
             Tooltip(group.folder.path, modifier = Modifier.weight(1f)) {
