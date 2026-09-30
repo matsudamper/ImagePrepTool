@@ -83,7 +83,7 @@ object ImageLoader {
         if (!smoothDownscale) return max(1, longSide / maxDimension)
         // 切り捨てだと上限の 2 倍近くまでフルデコードされるため、切り上げて上限以下に収める
         val decodeLimit = maxDimension * SMOOTH_DOWNSCALE_DECODE_FACTOR
-        return max(1, (longSide + decodeLimit - 1) / decodeLimit)
+        return 1 + (longSide - 1) / decodeLimit
     }
 
     private fun loadHeif(file: File, tools: ExternalTools, maxDimension: Int?): LoadedImage {
