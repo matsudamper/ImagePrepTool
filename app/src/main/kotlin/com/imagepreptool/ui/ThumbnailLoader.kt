@@ -36,7 +36,7 @@ object ThumbnailLoader {
         cache[key(file)]?.let { return it }
         val state = runInterruptible(dispatcher) {
             try {
-                ThumbnailState.Ready(ImageLoader.load(file, tools, maxDimension = SIZE, subsampleOnDecode = true).image.toComposeImageBitmap())
+                ThumbnailState.Ready(ImageLoader.load(file, tools, maxDimension = SIZE).image.toComposeImageBitmap())
             } catch (e: InterruptedException) {
                 throw e
             } catch (e: Throwable) {

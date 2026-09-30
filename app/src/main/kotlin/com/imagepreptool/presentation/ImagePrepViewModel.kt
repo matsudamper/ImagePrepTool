@@ -570,7 +570,7 @@ class ImagePrepViewModel(
         val source = previewCache[cacheKey] ?: try {
             // 別の画像に切り替えたら HEIC 変換などの外部プロセスも止める
             runInterruptible(Dispatchers.IO) {
-                PreviewSource(ImageLoader.load(file, tools, maxDimension = PREVIEW_MAX), ExifService.readFields(file))
+                PreviewSource(ImageLoader.load(file, tools, maxDimension = PREVIEW_MAX, smoothDownscale = true), ExifService.readFields(file))
             }.also { previewCache[cacheKey] = it }
         } catch (e: CancellationException) {
             throw e

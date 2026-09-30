@@ -19,6 +19,8 @@ class ImageLoadException(message: String, cause: Throwable? = null) : Exception(
 
 object ImageLoader {
 
+    private const val SMOOTH_DOWNSCALE_DECODE_FACTOR = 2
+
     val standardExtensions = setOf("jpg", "jpeg", "png", "webp", "gif", "bmp")
     val heifExtensions = setOf("heic", "heif", "hif")
     val supportedExtensions = standardExtensions + heifExtensions
@@ -36,15 +38,16 @@ object ImageLoader {
     /**
      * 画像を読み込み、EXIF の向きを反映した RGB / ARGB 画像にする。
      * @param maxDimension 指定すると長辺がこの値程度になるよう縮小して読む（サムネイル・プレビュー用）
-     * @param subsampleOnDecode 画素を間引いて高速に読む。ジャギーが出るため小さく表示するサムネイル向け
+     * @param smoothDownscale 画素の間引きをターゲットの数倍までにとどめ、残りは補間して縮小する。
+     *   間引きだけで縮めるとジャギーが出るが、フル解像度で読むと巨大な画像でメモリが足りなくなるため
      */
-    fun load(file: File, tools: ExternalTools, maxDimension: Int? = null, subsampleOnDecode: Boolean = false): LoadedImage {
+    fun load(file: File, tools: ExternalTools, maxDimension: Int? = null, smoothDownscale: Boolean = false): LoadedImage {
         if (!file.isFile) throw ImageLoadException("ファイルが見つかりません")
         if (isHeif(file)) return loadHeif(file, tools, maxDimension)
 
         val orientation = ExifService.readOrientation(file)
         val (decoded, rawSize) = try {
-            decode(file, maxDimension.takeIf { subsampleOnDecode })
+            decode(file, maxDimension?.let { if (smoothDownscale) it * SMOOTH_DOWNSCALE_DECODE_FACTOR else it })
         } catch (e: ImageLoadException) {
             throw e
         } catch (e: Exception) {
