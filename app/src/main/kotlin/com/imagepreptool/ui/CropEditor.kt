@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -32,9 +33,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ClipOp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
@@ -86,6 +89,7 @@ internal fun CropEditor(
     imageSize: ImageSize,
     crop: CropRect?,
     onCropChange: (CropRect?) -> Unit,
+    onDone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var aspect by rememberSaveable { mutableStateOf(CropAspect.Free) }
@@ -123,6 +127,7 @@ internal fun CropEditor(
                 Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                     Pill("${Cropper.croppedSize(imageSize, crop)} px")
                 }
+                Button(onClick = onDone, shape = MaterialTheme.shapes.small) { Text("完了") }
             }
         }
 
@@ -213,11 +218,10 @@ private fun CropOverlay(
             },
     ) {
         val rect = rectState.value
-        val shade = Color.Black.copy(alpha = 0.55f)
-        drawRect(shade, Offset.Zero, Size(size.width, rect.top))
-        drawRect(shade, Offset(0f, rect.bottom), Size(size.width, size.height - rect.bottom))
-        drawRect(shade, Offset(0f, rect.top), Size(rect.left, rect.height))
-        drawRect(shade, Offset(rect.right, rect.top), Size(size.width - rect.right, rect.height))
+        // 4 枚の矩形に分けて塗ると境目に細い線が出るため、範囲の外側だけを 1 回で塗る
+        clipRect(rect.left, rect.top, rect.right, rect.bottom, ClipOp.Difference) {
+            drawRect(Color.Black.copy(alpha = 0.55f))
+        }
 
         val guide = Color.White.copy(alpha = 0.45f)
         for (i in 1..2) {

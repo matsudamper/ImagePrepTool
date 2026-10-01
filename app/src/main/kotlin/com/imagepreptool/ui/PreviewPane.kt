@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -76,13 +77,14 @@ import com.imagepreptool.resources.ic_arrow_forward
 import com.imagepreptool.resources.ic_broken_image
 import com.imagepreptool.resources.ic_chevron_left
 import com.imagepreptool.resources.ic_chevron_right
+import com.imagepreptool.resources.ic_crop
 import com.imagepreptool.ui.components.Pill
 import com.imagepreptool.ui.components.SegmentedControl
 import com.imagepreptool.ui.theme.AppTheme
 import com.imagepreptool.ui.theme.MonoNumberStyle
 import org.jetbrains.compose.resources.painterResource
 
-private enum class PreviewMode(val label: String) { Processed("書き出し後"), Original("元画像"), Crop("切り抜き") }
+private enum class PreviewMode(val label: String) { Processed("書き出し後"), Original("元画像") }
 
 @Composable
 fun PreviewPane(
@@ -123,6 +125,7 @@ private fun PreviewPaneContent(
 ) {
     val ext = AppTheme.extended
     var mode by rememberSaveable { mutableStateOf(PreviewMode.Processed) }
+    var isCropEditing by rememberSaveable { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
 
@@ -155,13 +158,14 @@ private fun PreviewPaneContent(
                     selected = mode,
                     onSelect = { mode = it },
                     label = { it.label },
-                    modifier = Modifier.width(276.dp),
+                    modifier = Modifier.width(188.dp),
                 )
             }
         }
 
         // 画像
-        val isCropping = mode == PreviewMode.Crop
+        // 切り抜きは書き出し後の設定なので、書き出し後の表示でだけ編集する
+        val isCropping = isCropEditing && mode == PreviewMode.Processed
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -172,9 +176,10 @@ private fun PreviewPaneContent(
                 .then(if (isCropping) Modifier else Modifier.previewZoomGestures(zoom)),
             contentAlignment = Alignment.Center,
         ) {
-            val bitmap: ImageBitmap? = when (mode) {
-                PreviewMode.Processed -> preview.processed ?: preview.original
-                PreviewMode.Original, PreviewMode.Crop -> preview.original
+            val bitmap: ImageBitmap? = when {
+                isCropping -> preview.original
+                mode == PreviewMode.Processed -> preview.processed ?: preview.original
+                else -> preview.original
             }
             val originalSize = preview.originalSize
             when {
@@ -184,6 +189,7 @@ private fun PreviewPaneContent(
                     imageSize = originalSize,
                     crop = preview.crop,
                     onCropChange = onCropChange,
+                    onDone = { isCropEditing = false },
                 )
                 bitmap != null -> FittedImage(bitmap, zoom)
                 preview.file != null -> CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.5.dp, color = ext.canvasContent)
@@ -191,10 +197,15 @@ private fun PreviewPaneContent(
             }
 
             if (!isCropping) {
-                ZoomResetButton(
-                    zoom = zoom,
+                Row(
                     modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
-                )
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (mode == PreviewMode.Processed && bitmap != null) {
+                        CropButton(isCropped = preview.crop != null, onClick = { isCropEditing = true })
+                    }
+                    ZoomResetButton(zoom = zoom)
+                }
             }
 
             LoadingBadge(
@@ -336,6 +347,21 @@ private fun Modifier.previewZoomGestures(zoom: PreviewZoomState): Modifier = thi
     .pointerInput(zoom) {
         detectTapGestures(onDoubleTap = { zoom.reset() })
     }
+
+@Composable
+private fun CropButton(isCropped: Boolean, onClick: () -> Unit) {
+    FilledTonalButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = if (isCropped) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        ),
+    ) {
+        Icon(painterResource(Res.drawable.ic_crop), null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(if (isCropped) "切り抜き中" else "切り抜き", style = MaterialTheme.typography.labelMedium)
+    }
+}
 
 @Composable
 private fun ZoomResetButton(zoom: PreviewZoomState, modifier: Modifier = Modifier) {
