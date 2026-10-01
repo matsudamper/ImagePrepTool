@@ -1,6 +1,7 @@
 package com.imagepreptool.ui.components
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -45,14 +46,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.util.lerp
 import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_error_outline
 import com.imagepreptool.resources.ic_info
@@ -153,6 +158,70 @@ fun <T> SegmentedControl(
                     maxLines = 1,
                 )
             }
+        }
+    }
+}
+
+/**
+ * 2 つの状態を押すたびに切り替えるトグル。[SegmentedControl] と同じ見た目で、選択中の側を斜めの境目で示す
+ */
+@Composable
+fun SlantedToggle(
+    firstLabel: String,
+    secondLabel: String,
+    isSecondSelected: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = MaterialTheme.colorScheme
+    val interaction = remember { MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    val selectedPosition by animateFloatAsState(if (isSecondSelected) 1f else 0f)
+    val trackColor by animateColorAsState(if (hovered) colors.surfaceContainerHighest else colors.surfaceContainerHigh)
+    val selectedColor = colors.surface
+    val selectedBorderColor = colors.outlineVariant
+    Row(
+        modifier = modifier
+            .height(34.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(trackColor)
+            .hoverable(interaction)
+            .clickable(
+                interactionSource = interaction,
+                indication = null,
+                role = Role.Switch,
+                onClick = onToggle,
+            )
+            .padding(3.dp)
+            .clip(RoundedCornerShape(6.dp))
+            .drawBehind {
+                val slantHalf = 7.dp.toPx()
+                val center = size.width / 2
+                val leftTop = lerp(0f, center + slantHalf, selectedPosition)
+                val leftBottom = lerp(0f, center - slantHalf, selectedPosition)
+                val rightTop = lerp(center + slantHalf, size.width, selectedPosition)
+                val rightBottom = lerp(center - slantHalf, size.width, selectedPosition)
+                val selectedArea = Path().apply {
+                    moveTo(leftTop, 0f)
+                    lineTo(rightTop, 0f)
+                    lineTo(rightBottom, size.height)
+                    lineTo(leftBottom, size.height)
+                    close()
+                }
+                drawPath(selectedArea, selectedColor)
+                drawPath(selectedArea, selectedBorderColor, style = Stroke(width = 1.dp.toPx()))
+            },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf(firstLabel to !isSecondSelected, secondLabel to isSecondSelected).forEach { (label, isSelected) ->
+            Text(
+                label,
+                style = MaterialTheme.typography.labelLarge,
+                color = if (isSelected) colors.onSurface else colors.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }

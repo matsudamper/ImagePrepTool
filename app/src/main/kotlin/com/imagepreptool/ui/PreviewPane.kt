@@ -79,12 +79,18 @@ import com.imagepreptool.resources.ic_chevron_left
 import com.imagepreptool.resources.ic_chevron_right
 import com.imagepreptool.resources.ic_crop
 import com.imagepreptool.ui.components.Pill
-import com.imagepreptool.ui.components.SegmentedControl
+import com.imagepreptool.ui.components.SlantedToggle
 import com.imagepreptool.ui.theme.AppTheme
 import com.imagepreptool.ui.theme.MonoNumberStyle
 import org.jetbrains.compose.resources.painterResource
 
-private enum class PreviewMode(val label: String) { Processed("書き出し後"), Original("元画像") }
+private enum class PreviewMode(val label: String) {
+    Processed("書き出し後"),
+    Original("元画像"),
+    ;
+
+    val toggled: PreviewMode get() = if (this == Processed) Original else Processed
+}
 
 @Composable
 fun PreviewPane(
@@ -153,11 +159,11 @@ private fun PreviewPaneContent(
                 } else {
                     Spacer(Modifier.weight(1f))
                 }
-                SegmentedControl(
-                    options = PreviewMode.entries,
-                    selected = mode,
-                    onSelect = { mode = it },
-                    label = { it.label },
+                SlantedToggle(
+                    firstLabel = PreviewMode.Processed.label,
+                    secondLabel = PreviewMode.Original.label,
+                    isSecondSelected = mode == PreviewMode.Original,
+                    onToggle = { mode = mode.toggled },
                     modifier = Modifier.width(188.dp),
                 )
             }
