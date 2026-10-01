@@ -62,6 +62,7 @@ import com.imagepreptool.model.CaptionPosition
 import com.imagepreptool.model.CaptionStyle
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.OutputPathMode
 import com.imagepreptool.model.ResizeMode
 import com.imagepreptool.presentation.Notice
 import com.imagepreptool.presentation.NoticeAction
@@ -88,14 +89,16 @@ fun SettingsPanel(
     hasFocusedImage: Boolean,
     sampleFile: File?,
     outputDirectory: File?,
-    isCustomOutputDirectory: Boolean,
+    outputPathMode: OutputPathMode,
+    relativeOutputPath: String,
     notices: List<Notice>,
     exportCount: Int,
     canExport: Boolean,
     onOptionsChange: ((EditOptions) -> EditOptions) -> Unit,
     onInputValidityChange: (String, Boolean) -> Unit,
     onChooseOutput: () -> Unit,
-    onResetOutput: () -> Unit,
+    onOutputPathModeChange: (OutputPathMode) -> Unit,
+    onRelativeOutputPathChange: (String) -> Unit,
     onNoticeAction: (NoticeAction) -> Unit,
     onExport: () -> Unit,
     modifier: Modifier = Modifier,
@@ -109,7 +112,17 @@ fun SettingsPanel(
             HorizontalDivider(color = colors.outlineVariant)
             CaptionSection(options, captionFields, hasFocusedImage, onOptionsChange)
             HorizontalDivider(color = colors.outlineVariant)
-            OutputSection(options, sampleFile, outputDirectory, isCustomOutputDirectory, onOptionsChange, onChooseOutput, onResetOutput)
+            OutputSection(
+                options = options,
+                sampleFile = sampleFile,
+                outputDirectory = outputDirectory,
+                pathMode = outputPathMode,
+                relativePath = relativeOutputPath,
+                onChange = onOptionsChange,
+                onChoose = onChooseOutput,
+                onPathModeChange = onOutputPathModeChange,
+                onRelativePathChange = onRelativeOutputPathChange,
+            )
         }
 
         // 書き出しボタンは常に見える位置に置く
@@ -406,13 +419,29 @@ private fun OutputSection(
     options: EditOptions,
     sampleFile: File?,
     outputDirectory: File?,
-    isCustom: Boolean,
+    pathMode: OutputPathMode,
+    relativePath: String,
     onChange: ((EditOptions) -> EditOptions) -> Unit,
     onChoose: () -> Unit,
-    onReset: () -> Unit,
+    onPathModeChange: (OutputPathMode) -> Unit,
+    onRelativePathChange: (String) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     SettingsSection("書き出し先") {
+        SegmentedControl(
+            options = OutputPathMode.entries,
+            selected = pathMode,
+            onSelect = onPathModeChange,
+            label = { it.label },
+        )
+        if (pathMode == OutputPathMode.Relative) {
+            CompactTextField(
+                value = relativePath,
+                onValueChange = onRelativePathChange,
+                placeholder = "例: output/web",
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Surface(
             color = colors.surfaceContainer,
             shape = MaterialTheme.shapes.small,
@@ -422,33 +451,36 @@ private fun OutputSection(
                 Icon(painterResource(Res.drawable.ic_folder), null, tint = colors.primary, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        outputDirectory?.name ?: "未設定",
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        outputDirectory?.parentFile?.absolutePath.orEmpty(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (outputDirectory == null && pathMode == OutputPathMode.Absolute) {
+                        Text(
+                            "フォルダを選択してください",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.error,
+                        )
+                    } else {
+                        Text(
+                            outputDirectory?.name ?: "未設定",
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            outputDirectory?.parentFile?.absolutePath.orEmpty(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
-                OutlinedButton(
-                    onClick = onChoose,
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                    modifier = Modifier.height(32.dp),
-                ) { Text("変更…", style = MaterialTheme.typography.labelLarge) }
+                if (pathMode == OutputPathMode.Absolute) {
+                    OutlinedButton(
+                        onClick = onChoose,
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        modifier = Modifier.height(32.dp),
+                    ) { Text("選択…", style = MaterialTheme.typography.labelLarge) }
+                }
             }
-        }
-        if (isCustom) {
-            TextButton(onClick = onReset, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.height(28.dp)) {
-                Text("元画像のフォルダ内「output」に戻す", style = MaterialTheme.typography.labelMedium)
-            }
-        } else {
-            Hint("元画像と同じフォルダに「output」を作って保存します。")
         }
         Column {
             FieldLabel("ファイル名の末尾に追加")
