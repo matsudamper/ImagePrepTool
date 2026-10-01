@@ -89,7 +89,6 @@ fun SettingsPanel(
     hasFocusedImage: Boolean,
     sampleFile: File?,
     outputDirectory: File?,
-    isCustomOutputDirectory: Boolean,
     outputPathMode: OutputPathMode,
     relativeOutputPath: String,
     notices: List<Notice>,
@@ -98,7 +97,6 @@ fun SettingsPanel(
     onOptionsChange: ((EditOptions) -> EditOptions) -> Unit,
     onInputValidityChange: (String, Boolean) -> Unit,
     onChooseOutput: () -> Unit,
-    onResetOutput: () -> Unit,
     onOutputPathModeChange: (OutputPathMode) -> Unit,
     onRelativeOutputPathChange: (String) -> Unit,
     onNoticeAction: (NoticeAction) -> Unit,
@@ -118,12 +116,10 @@ fun SettingsPanel(
                 options = options,
                 sampleFile = sampleFile,
                 outputDirectory = outputDirectory,
-                isCustom = isCustomOutputDirectory,
                 pathMode = outputPathMode,
                 relativePath = relativeOutputPath,
                 onChange = onOptionsChange,
                 onChoose = onChooseOutput,
-                onReset = onResetOutput,
                 onPathModeChange = onOutputPathModeChange,
                 onRelativePathChange = onRelativeOutputPathChange,
             )
@@ -423,12 +419,10 @@ private fun OutputSection(
     options: EditOptions,
     sampleFile: File?,
     outputDirectory: File?,
-    isCustom: Boolean,
     pathMode: OutputPathMode,
     relativePath: String,
     onChange: ((EditOptions) -> EditOptions) -> Unit,
     onChoose: () -> Unit,
-    onReset: () -> Unit,
     onPathModeChange: (OutputPathMode) -> Unit,
     onRelativePathChange: (String) -> Unit,
 ) {
@@ -457,37 +451,41 @@ private fun OutputSection(
                 Icon(painterResource(Res.drawable.ic_folder), null, tint = colors.primary, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
-                    Text(
-                        outputDirectory?.name ?: "未設定",
-                        style = MaterialTheme.typography.bodyMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        outputDirectory?.parentFile?.absolutePath.orEmpty(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = colors.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    if (outputDirectory == null && pathMode == OutputPathMode.Absolute) {
+                        Text(
+                            "フォルダを選択してください",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colors.error,
+                        )
+                    } else {
+                        Text(
+                            outputDirectory?.name ?: "未設定",
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            outputDirectory?.parentFile?.absolutePath.orEmpty(),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = colors.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
                 if (pathMode == OutputPathMode.Absolute) {
                     OutlinedButton(
                         onClick = onChoose,
                         contentPadding = PaddingValues(horizontal = 12.dp),
                         modifier = Modifier.height(32.dp),
-                    ) { Text("変更…", style = MaterialTheme.typography.labelLarge) }
+                    ) { Text("選択…", style = MaterialTheme.typography.labelLarge) }
                 }
             }
         }
         if (pathMode == OutputPathMode.Relative) {
             Hint("元画像のフォルダからの相対パスに保存します（例: ../export）。")
-        } else if (isCustom) {
-            TextButton(onClick = onReset, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.height(28.dp)) {
-                Text("元画像のフォルダ内「output」に戻す", style = MaterialTheme.typography.labelMedium)
-            }
         } else {
-            Hint("元画像と同じフォルダに「output」を作って保存します。")
+            Hint("選択したフォルダに保存します。選択は保存されないため、起動のたびに選び直してください。")
         }
         Column {
             FieldLabel("ファイル名の末尾に追加")

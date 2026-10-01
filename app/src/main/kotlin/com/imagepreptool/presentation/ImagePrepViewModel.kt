@@ -64,7 +64,6 @@ class ImagePrepViewModel(
     private val viewModelStateFlow = MutableStateFlow(
         ImagePrepViewModelState(
             options = settings.loadOptions(),
-            customOutputDir = settings.loadCustomOutputDir(),
             outputPathMode = settings.loadOutputPathMode(),
             relativeOutputPath = settings.loadRelativeOutputPath(),
             recentFolders = settings.loadRecentFolders(),
@@ -89,7 +88,6 @@ class ImagePrepViewModel(
         override fun setInputValid(field: String, valid: Boolean) = this@ImagePrepViewModel.setInputValid(field, valid)
         override fun setCrop(file: File, crop: CropRect?) = this@ImagePrepViewModel.setCrop(file, crop)
         override fun chooseOutputDirectory(dir: File) = this@ImagePrepViewModel.chooseOutputDirectory(dir)
-        override fun resetOutputDirectory() = this@ImagePrepViewModel.resetOutputDirectory()
         override fun setOutputPathMode(mode: OutputPathMode) = this@ImagePrepViewModel.setOutputPathMode(mode)
         override fun setRelativeOutputPath(path: String) = this@ImagePrepViewModel.setRelativeOutputPath(path)
         override fun requestExport() = this@ImagePrepViewModel.requestExport()
@@ -425,13 +423,7 @@ class ImagePrepViewModel(
     }
 
     private fun chooseOutputDirectory(dir: File) {
-        mutate { it.copy(customOutputDir = dir) }
-        settings.saveCustomOutputDir(dir)
-    }
-
-    private fun resetOutputDirectory() {
-        mutate { it.copy(customOutputDir = null) }
-        settings.saveCustomOutputDir(null)
+        mutate { it.copy(selectedOutputDir = dir) }
     }
 
     private fun setOutputPathMode(mode: OutputPathMode) {
@@ -733,8 +725,9 @@ internal data class ImagePrepViewModelState(
      */
     val isSelectionMode: Boolean = false,
     val options: EditOptions = EditOptions(),
-    val customOutputDir: File? = null,
-    val outputPathMode: OutputPathMode = OutputPathMode.Absolute,
+    /** 絶対パスで選んだ書き出し先。起動のたびに選び直してもらうため保存しない */
+    val selectedOutputDir: File? = null,
+    val outputPathMode: OutputPathMode = OutputPathMode.Relative,
     /** [outputPathMode] が相対パスのときの、元画像のフォルダからのパス */
     val relativeOutputPath: String = RelativeOutputPath.DEFAULT,
     val tools: ExternalTools? = null,
@@ -764,16 +757,13 @@ internal data class ImagePrepViewModelState(
     val exportTargets: List<ImageItem>
         get() = images.filter { it.file in effectiveSelection }
 
-    val defaultOutputDir: File?
-        get() = sourceFolder?.let { File(it, RelativeOutputPath.DEFAULT) }
-
     /** 相対パスの基準。複数フォルダの画像があっても先頭の画像のフォルダにまとめる */
     val sourceFolder: File?
         get() = images.firstOrNull()?.file?.folder
 
     val outputDir: File?
         get() = when (outputPathMode) {
-            OutputPathMode.Absolute -> customOutputDir ?: defaultOutputDir
+            OutputPathMode.Absolute -> selectedOutputDir
             OutputPathMode.Relative -> sourceFolder?.let { RelativeOutputPath.resolve(it, relativeOutputPath) }
         }
 
@@ -822,8 +812,7 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
             add(Notice("出力先が元画像と同じフォルダです。元画像は上書きされず「(2)」付きの名前で保存されます。接尾辞の設定がおすすめです。", blocking = false, action = null))
         }
         val targetFolderCount = targets.map { it.file.folder }.distinct().size
-        val isMergedIntoFirstFolder = outputPathMode == OutputPathMode.Relative || customOutputDir == null
-        if (outputDir != null && isMergedIntoFirstFolder && targetFolderCount > 1) {
+        if (outputDir != null && outputPathMode == OutputPathMode.Relative && targetFolderCount > 1) {
             add(Notice("$targetFolderCount つのフォルダの画像を 1 つの出力先にまとめて書き出します。", blocking = false, action = null))
         }
     }
@@ -837,7 +826,6 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
         pickerInitialDirectory = (focusedFile ?: images.lastOrNull()?.file)?.folder,
         options = options,
         outputDirectory = outputDir,
-        isCustomOutputDirectory = customOutputDir != null,
         outputPathMode = outputPathMode,
         relativeOutputPath = relativeOutputPath,
         tools = tools,

@@ -10,8 +10,6 @@ import com.imagepreptool.service.RelativeOutputPath
 interface SettingsStore {
     fun loadOptions(): EditOptions
     fun saveOptions(options: EditOptions)
-    fun loadCustomOutputDir(): File?
-    fun saveCustomOutputDir(dir: File?)
     fun loadOutputPathMode(): OutputPathMode
     fun saveOutputPathMode(mode: OutputPathMode)
     fun loadRelativeOutputPath(): String
@@ -69,13 +67,7 @@ class PreferencesSettingsStore(
         return if (prefs.get("captionSource", null) == "Custom" && legacy.isNotBlank()) legacy else default
     }
 
-    override fun loadCustomOutputDir(): File? = prefs.get("customOutputDir", null)?.let(::File)
-
-    override fun saveCustomOutputDir(dir: File?) = safely {
-        if (dir == null) prefs.remove("customOutputDir") else prefs.put("customOutputDir", dir.absolutePath)
-    }
-
-    override fun loadOutputPathMode(): OutputPathMode = enumOr(prefs.get("outputPathMode", null), OutputPathMode.Absolute)
+    override fun loadOutputPathMode(): OutputPathMode = enumOr(prefs.get("outputPathMode", null), OutputPathMode.Relative)
 
     override fun saveOutputPathMode(mode: OutputPathMode) = safely {
         prefs.put("outputPathMode", mode.name)
@@ -107,18 +99,13 @@ class PreferencesSettingsStore(
 
 class InMemorySettingsStore(
     private var options: EditOptions = EditOptions(),
-    private var customOutputDir: File? = null,
-    private var outputPathMode: OutputPathMode = OutputPathMode.Absolute,
+    private var outputPathMode: OutputPathMode = OutputPathMode.Relative,
     private var relativeOutputPath: String = RelativeOutputPath.DEFAULT,
     private var recent: List<File> = emptyList(),
 ) : SettingsStore {
     override fun loadOptions() = options
     override fun saveOptions(options: EditOptions) {
         this.options = options
-    }
-    override fun loadCustomOutputDir() = customOutputDir
-    override fun saveCustomOutputDir(dir: File?) {
-        customOutputDir = dir
     }
     override fun loadOutputPathMode() = outputPathMode
     override fun saveOutputPathMode(mode: OutputPathMode) {

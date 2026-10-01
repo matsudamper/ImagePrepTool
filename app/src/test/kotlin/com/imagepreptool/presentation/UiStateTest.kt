@@ -8,6 +8,7 @@ import kotlin.test.assertTrue
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.OutputPathMode
 
 class UiStateTest {
 
@@ -53,6 +54,25 @@ class UiStateTest {
         ).toUiState(listener)
         assertFalse(state.canExport)
         assertTrue(state.notices.any { it.blocking })
+    }
+
+    @Test
+    fun absoluteModeWithoutSelectedFolderBlocksExport() {
+        val unselected = ImagePrepViewModelState(
+            images = listOf(ImageItem(File("/photos/a.jpg"))),
+            selection = setOf(File("/photos/a.jpg")),
+            outputPathMode = OutputPathMode.Absolute,
+        ).toUiState(listener)
+        assertEquals(null, unselected.outputDirectory)
+        assertFalse(unselected.canExport)
+        val selected = ImagePrepViewModelState(
+            images = listOf(ImageItem(File("/photos/a.jpg"))),
+            selection = setOf(File("/photos/a.jpg")),
+            outputPathMode = OutputPathMode.Absolute,
+            selectedOutputDir = File("/export"),
+        ).toUiState(listener)
+        assertEquals(File("/export"), selected.outputDirectory)
+        assertTrue(selected.canExport)
     }
 
     @Test

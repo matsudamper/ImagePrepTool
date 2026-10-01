@@ -101,7 +101,6 @@ data class ImagePrepUiState(
     val pickerInitialDirectory: File?,
     val options: EditOptions,
     val outputDirectory: File?,
-    val isCustomOutputDirectory: Boolean,
     val outputPathMode: OutputPathMode,
     val relativeOutputPath: String,
     val tools: ExternalTools?,
@@ -113,7 +112,7 @@ data class ImagePrepUiState(
     val listener: Listener,
 ) {
     val hasImages: Boolean get() = images.isNotEmpty()
-    val canExport: Boolean get() = exportCount > 0 && notices.none { it.blocking } && export == ExportState.Idle && !isLoading
+    val canExport: Boolean get() = exportCount > 0 && outputDirectory != null && notices.none { it.blocking } && export == ExportState.Idle && !isLoading
     val missingToolCount: Int
         get() = tools?.let { t ->
             listOf(t.canWriteWebp, t.heifDecoder != null).count { !it }
@@ -139,7 +138,6 @@ data class ImagePrepUiState(
         fun setInputValid(field: String, valid: Boolean)
         fun setCrop(file: File, crop: CropRect?)
         fun chooseOutputDirectory(dir: File)
-        fun resetOutputDirectory()
         fun setOutputPathMode(mode: OutputPathMode)
         fun setRelativeOutputPath(path: String)
         fun requestExport()

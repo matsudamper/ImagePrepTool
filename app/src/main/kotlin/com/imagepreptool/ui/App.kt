@@ -273,7 +273,6 @@ private fun Workspace(
                 hasFocusedImage = uiState.focusedFile != null && uiState.preview.original != null,
                 sampleFile = uiState.focusedFile ?: uiState.images.firstOrNull()?.file,
                 outputDirectory = uiState.outputDirectory,
-                isCustomOutputDirectory = uiState.isCustomOutputDirectory,
                 outputPathMode = uiState.outputPathMode,
                 relativeOutputPath = uiState.relativeOutputPath,
                 notices = uiState.notices,
@@ -287,7 +286,6 @@ private fun Workspace(
                             ?.let(uiState.listener::chooseOutputDirectory)
                     }
                 },
-                onResetOutput = uiState.listener::resetOutputDirectory,
                 onOutputPathModeChange = uiState.listener::setOutputPathMode,
                 onRelativeOutputPathChange = uiState.listener::setRelativeOutputPath,
                 onNoticeAction = { action ->
