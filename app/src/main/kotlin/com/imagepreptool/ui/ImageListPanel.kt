@@ -53,6 +53,7 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isCtrlPressed
 import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -100,6 +101,7 @@ fun ImageListPanel(
     onSelectAll: () -> Unit,
     onClearSelection: () -> Unit,
     onMoveFocus: (Int) -> Unit,
+    onExtendSelection: (Int) -> Unit,
     onRemove: (File) -> Unit,
     onReveal: (File) -> Unit,
     onOpenFolder: (File) -> Unit,
@@ -174,7 +176,8 @@ fun ImageListPanel(
                         val visibleFocusedFile = focusedFile?.takeIf { file -> visibleGroups.any { group -> group.images.any { it.file == file } } }
                         val moveFocusInVisible = { visibleDelta: Int ->
                             if (visibleFocusedFile != null) {
-                                onMoveFocus(focusDeltaInAllImages(imageGroups, visibleGroups, visibleFocusedFile, visibleDelta))
+                                val delta = focusDeltaInAllImages(imageGroups, visibleGroups, visibleFocusedFile, visibleDelta)
+                                if (event.isShiftPressed) onExtendSelection(delta) else onMoveFocus(delta)
                             }
                         }
                         when (event.key) {
@@ -502,6 +505,7 @@ private fun ImageListPanelPreview() {
             onSelectAll = {},
             onClearSelection = {},
             onMoveFocus = {},
+            onExtendSelection = {},
             onRemove = {},
             onReveal = {},
             onOpenFolder = {},

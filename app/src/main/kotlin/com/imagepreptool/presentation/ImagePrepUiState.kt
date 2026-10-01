@@ -127,6 +127,7 @@ data class ImagePrepUiState(
         fun selectAll()
         fun clearSelection()
         fun moveFocus(delta: Int)
+        fun extendSelection(delta: Int)
         fun removeImage(file: File)
         fun removeSelection()
         fun removeFolder(folder: File)

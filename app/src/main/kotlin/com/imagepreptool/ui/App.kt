@@ -248,6 +248,7 @@ private fun Workspace(
                 onSelectAll = uiState.listener::selectAll,
                 onClearSelection = uiState.listener::clearSelection,
                 onMoveFocus = uiState.listener::moveFocus,
+                onExtendSelection = uiState.listener::extendSelection,
                 onRemove = uiState.listener::removeImage,
                 onReveal = { file -> DesktopDialogs.revealFile(file)?.let(actions.showMessage) },
                 onOpenFolder = { folder -> DesktopDialogs.openFolder(folder)?.let(actions.showMessage) },
