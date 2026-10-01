@@ -89,6 +89,7 @@ data class Notice(
 
 data class ImagePrepUiState(
     val images: List<ImageItem>,
+    val isWorkspaceOpen: Boolean,
     /** [images] をフォルダごとに区切ったもの。並び順は [images] と同じ */
     val imageGroups: List<ImageGroup>,
     /** 書き出す枚数。複数選択中は選択中の画像、そうでなければ一覧のすべて */
@@ -109,7 +110,6 @@ data class ImagePrepUiState(
     val isLoading: Boolean,
     val listener: Listener,
 ) {
-    val hasImages: Boolean get() = images.isNotEmpty()
     val canExport: Boolean get() = exportCount > 0 && notices.none { it.blocking } && export == ExportState.Idle && !isLoading
     val missingToolCount: Int
         get() = tools?.let { t ->
