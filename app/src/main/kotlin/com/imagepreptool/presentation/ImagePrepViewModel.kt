@@ -157,6 +157,7 @@ class ImagePrepViewModel(
                 if (state.images.isEmpty()) {
                     state.copy(
                         images = added.map(::ImageItem),
+                        isWorkspaceOpen = true,
                         focusedFile = added.firstOrNull(),
                         selection = added.take(1).toSet(),
                         anchor = added.firstOrNull(),
@@ -200,6 +201,7 @@ class ImagePrepViewModel(
             mutate { state ->
                 state.copy(
                     images = (state.images + added.map(::ImageItem)).groupedByFolder(),
+                    isWorkspaceOpen = state.isWorkspaceOpen || added.isNotEmpty(),
                     focusedFile = state.focusedFile ?: added.firstOrNull(),
                 )
             }
@@ -227,7 +229,7 @@ class ImagePrepViewModel(
     internal fun snapshotForTest(): ImagePrepUiState = viewModelStateFlow.value.toUiState(listener)
 
     internal fun addFilesForTest(files: List<File>) {
-        mutate { it.copy(images = files.map(::ImageItem), focusedFile = files.firstOrNull()) }
+        mutate { it.copy(images = files.map(::ImageItem), isWorkspaceOpen = true, focusedFile = files.firstOrNull()) }
     }
 
     internal fun setToolsForTest(tools: ExternalTools) {
@@ -242,6 +244,7 @@ class ImagePrepViewModel(
         mutate {
             it.copy(
                 images = emptyList(),
+                isWorkspaceOpen = false,
                 focusedFile = null,
                 selection = emptySet(),
                 anchor = null,
@@ -715,6 +718,8 @@ private val EmptyPreview = PreviewState(
 internal data class ImagePrepViewModelState(
     /** 同じフォルダの画像が続けて並ぶ（[groupedByFolder]） */
     val images: List<ImageItem> = emptyList(),
+    /** 一覧の画像をすべて削除してもホームに戻さないため、画像の有無とは別に持つ */
+    val isWorkspaceOpen: Boolean = false,
     val focusedFile: File? = null,
     /** 一覧で選択中の画像（Shift / Ctrl で複数）。プレビューは [focusedFile] */
     val selection: Set<File> = emptySet(),
@@ -818,6 +823,7 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
     }
     return ImagePrepUiState(
         images = images,
+        isWorkspaceOpen = isWorkspaceOpen,
         imageGroups = images.groupBy { it.file.folder }.map { (folder, items) -> ImageGroup(folder, items) },
         exportCount = targets.size,
         isExportingSelection = isSelectionMode,
