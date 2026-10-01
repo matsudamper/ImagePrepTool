@@ -33,6 +33,8 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.onClick
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -75,9 +77,12 @@ import java.io.File
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.presentation.ImageGroup
 import com.imagepreptool.presentation.ImageItem
+import com.imagepreptool.presentation.ImageSortKey
+import com.imagepreptool.presentation.ImageSortOrder
 import com.imagepreptool.presentation.SelectMode
 import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_broken_image
+import com.imagepreptool.resources.ic_check
 import com.imagepreptool.resources.ic_close
 import com.imagepreptool.resources.ic_folder
 import com.imagepreptool.ui.components.Tooltip
@@ -92,7 +97,10 @@ fun ImageListPanel(
     focusedFile: File?,
     selectedFiles: Set<File>,
     isSelectionMode: Boolean,
+    sortOrder: ImageSortOrder,
     tools: ExternalTools?,
+    onSelectSortKey: (ImageSortKey) -> Unit,
+    onToggleSortDirection: () -> Unit,
     onClickImage: (File, SelectMode) -> Unit,
     onRemoveSelection: () -> Unit,
     onUndoRemoval: () -> Unit,
@@ -140,10 +148,16 @@ fun ImageListPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("画像", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                SortControl(
+                    sortOrder = sortOrder,
+                    onSelectKey = onSelectSortKey,
+                    onToggleDirection = onToggleSortDirection,
+                )
                 Text(
                     "$imageCount 枚",
                     style = MaterialTheme.typography.labelMedium.merge(MonoNumberStyle),
                     color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp),
                 )
             }
         }
@@ -364,6 +378,42 @@ private fun FolderHeader(group: ImageGroup, expanded: Boolean, onToggleExpand: (
 }
 
 @Composable
+private fun SortControl(sortOrder: ImageSortOrder, onSelectKey: (ImageSortKey) -> Unit, onToggleDirection: () -> Unit) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box {
+            Tooltip("並べ替え") {
+                TextButton(onClick = { menuExpanded = true }, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(30.dp)) {
+                    Text("${sortOrder.key.label} ▾", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                ImageSortKey.entries.forEach { key ->
+                    DropdownMenuItem(
+                        text = { Text(key.label, style = MaterialTheme.typography.bodyMedium) },
+                        trailingIcon = if (key == sortOrder.key) {
+                            { Icon(painterResource(Res.drawable.ic_check), null, modifier = Modifier.size(18.dp)) }
+                        } else {
+                            null
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onSelectKey(key)
+                        },
+                    )
+                }
+            }
+        }
+        val directionLabel = if (sortOrder.ascending) "昇順" else "降順"
+        Tooltip("$directionLabel（クリックで切り替え）") {
+            TextButton(onClick = onToggleDirection, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(30.dp)) {
+                Text(if (sortOrder.ascending) "↑ 昇順" else "↓ 降順", style = MaterialTheme.typography.labelLarge)
+            }
+        }
+    }
+}
+
+@Composable
 private fun SelectionBar(count: Int, onRemove: () -> Unit, onClear: () -> Unit) {
     val colors = MaterialTheme.colorScheme
     Row(
@@ -479,7 +529,10 @@ private fun ImageListPanelPreview() {
             focusedFile = imageGroups.first().images.first().file,
             selectedFiles = setOf(imageGroups.first().images.first().file),
             isSelectionMode = false,
+            sortOrder = ImageSortOrder(ImageSortKey.Name, ascending = true),
             tools = null,
+            onSelectSortKey = {},
+            onToggleSortDirection = {},
             onClickImage = { _, _ -> },
             onRemoveSelection = {},
             onUndoRemoval = {},

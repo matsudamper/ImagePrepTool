@@ -7,6 +7,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.model.FileDates
 import com.imagepreptool.model.OutputFormat
 
 class UiStateTest {
@@ -23,6 +24,25 @@ class UiStateTest {
             listOf("img_1.jpg", "IMG_2.jpg", "IMG_3b.jpg", "IMG_10.jpg"),
             names.map(::File).sortedWith(NaturalOrder).map { it.name },
         )
+    }
+
+    @Test
+    fun capturedDateSortKeepsImagesWithoutDateLast() {
+        val old = File("/photos/b.jpg")
+        val new = File("/photos/a.jpg")
+        val noDate = File("/photos/c.jpg")
+        val other = File("/other/z.jpg")
+        val dates = mapOf(
+            old to FileDates(capturedAtMillis = 1, modifiedAtMillis = null, createdAtMillis = null),
+            new to FileDates(capturedAtMillis = 2, modifiedAtMillis = null, createdAtMillis = null),
+            noDate to FileDates(capturedAtMillis = null, modifiedAtMillis = null, createdAtMillis = null),
+        )
+        val base = ImagePrepViewModelState(images = listOf(noDate, new, old, other).map(::ImageItem), fileDates = dates)
+
+        val ascending = base.copy(sortOrder = ImageSortOrder(ImageSortKey.Captured, ascending = true))
+        assertEquals(listOf(old, new, noDate, other), ascending.orderedImages.map { it.file })
+        val descending = base.copy(sortOrder = ImageSortOrder(ImageSortKey.Captured, ascending = false))
+        assertEquals(listOf(new, old, noDate, other), descending.orderedImages.map { it.file })
     }
 
     @Test

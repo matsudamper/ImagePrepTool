@@ -15,6 +15,18 @@ import com.imagepreptool.service.PlannedOutput
 
 enum class SelectMode { Single, Toggle, Range }
 
+enum class ImageSortKey(val label: String) {
+    Name("ファイル名"),
+    Captured("撮影日"),
+    Modified("更新日"),
+    Created("作成日"),
+}
+
+data class ImageSortOrder(
+    val key: ImageSortKey,
+    val ascending: Boolean,
+)
+
 data class ImageItem(
     val file: File,
 )
@@ -96,6 +108,8 @@ data class ImagePrepUiState(
     val isExportingSelection: Boolean,
     val focusedFile: File?,
     val selectedFiles: Set<File>,
+    /** 一覧のフォルダ内の並び順 */
+    val sortOrder: ImageSortOrder,
     /** 画像を開くダイアログで最初に表示するフォルダ */
     val pickerInitialDirectory: File?,
     val options: EditOptions,
@@ -127,6 +141,8 @@ data class ImagePrepUiState(
         fun selectAll()
         fun clearSelection()
         fun moveFocus(delta: Int)
+        fun selectSortKey(key: ImageSortKey)
+        fun toggleSortDirection()
         fun removeImage(file: File)
         fun removeSelection()
         fun removeFolder(folder: File)
