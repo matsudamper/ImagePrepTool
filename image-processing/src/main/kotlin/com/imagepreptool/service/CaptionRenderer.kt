@@ -6,14 +6,21 @@ import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.geom.RoundRectangle2D
 import java.awt.image.BufferedImage
-import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.roundToInt
 import com.imagepreptool.model.CaptionPosition
 import com.imagepreptool.model.CaptionStyle
 import com.imagepreptool.model.EditOptions
 
+/**
+ * 寸法はすべて文字サイズ（＝画像の短辺に対する割合）の倍率で決める。
+ * 画素数の下限や整数丸めを入れると、画像サイズによって余白や行間の見た目の比率が変わってしまう
+ */
 object CaptionRenderer {
+    private const val MARGIN_RATIO = 1.1f
+    private const val LINE_HEIGHT_RATIO = 1.3f
+    private const val PLATE_PADDING_H_RATIO = 0.55f
+    private const val PLATE_PADDING_V_RATIO = 0.25f
+    private const val PLATE_CORNER_RADIUS_RATIO = 0.5f
 
     /** [image] に直接キャプションを描く。改行で複数行。右側に置くときは右揃え */
     fun draw(image: BufferedImage, caption: String, options: EditOptions) {
@@ -21,9 +28,10 @@ object CaptionRenderer {
         if (lines.isEmpty()) return
         val shortEdge = min(image.width, image.height)
         val percent = options.captionSizePercent.coerceIn(EditOptions.MIN_CAPTION_PERCENT, EditOptions.MAX_CAPTION_PERCENT)
-        var fontPx = max(8f, shortEdge * percent / 100f)
-        val margin = (fontPx * 1.1f).roundToInt()
+        val preferredFontPx = shortEdge * percent / 100f
+        val margin = preferredFontPx * MARGIN_RATIO
         val plate = options.captionStyle == CaptionStyle.Plate
+        val plateWidthRatio = if (plate) PLATE_PADDING_H_RATIO * 2 else 0f
 
         val g = image.createGraphics()
         try {
@@ -33,37 +41,39 @@ object CaptionRenderer {
             g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
 
             // 画像幅に収まらなければ文字を小さくする
+            var fontPx = preferredFontPx
             var font = Font(Font.SANS_SERIF, Font.PLAIN, 1).deriveFont(fontPx)
             val available = image.width - margin * 2
-            val measured = maxLineWidth(g, font, lines) + (if (plate) fontPx * 1.1f else 0f)
+            val measured = maxLineWidth(g, font, lines) + fontPx * plateWidthRatio
             if (measured > available && available > 0) {
-                fontPx = max(6f, fontPx * available / measured)
+                fontPx *= available / measured
                 font = font.deriveFont(fontPx)
             }
             g.font = font
-            val metrics = g.fontMetrics
-            val lineHeight = (metrics.ascent + metrics.descent) * 1.18f
-            val textWidth = maxLineWidth(g, font, lines).toFloat()
-            val padH = if (plate) fontPx * 0.55f else 0f
-            val padV = if (plate) fontPx * 0.32f else 0f
+            val lineMetrics = font.getLineMetrics(lines.first(), g.fontRenderContext)
+            val lineHeight = fontPx * LINE_HEIGHT_RATIO
+            val baselineInLine = (lineHeight - lineMetrics.ascent - lineMetrics.descent) / 2 + lineMetrics.ascent
+            val textWidth = maxLineWidth(g, font, lines)
+            val padH = if (plate) fontPx * PLATE_PADDING_H_RATIO else 0f
+            val padV = if (plate) fontPx * PLATE_PADDING_V_RATIO else 0f
             val boxWidth = textWidth + padH * 2
-            val boxHeight = lineHeight * (lines.size - 1) + metrics.ascent + metrics.descent + padV * 2
+            val boxHeight = lineHeight * lines.size + padV * 2
             val alignRight = options.captionPosition == CaptionPosition.TopRight || options.captionPosition == CaptionPosition.BottomRight
 
-            val left = if (alignRight) image.width - margin - boxWidth else margin.toFloat()
+            val left = if (alignRight) image.width - margin - boxWidth else margin
             val top = when (options.captionPosition) {
-                CaptionPosition.TopLeft, CaptionPosition.TopRight -> margin.toFloat()
+                CaptionPosition.TopLeft, CaptionPosition.TopRight -> margin
                 CaptionPosition.BottomLeft, CaptionPosition.BottomRight -> image.height - margin - boxHeight
             }
 
             if (plate) {
                 g.color = Color(0, 0, 0, 150)
-                val radius = min(boxHeight, fontPx * 1.6f) * 0.35f
-                g.fill(RoundRectangle2D.Float(left, top, boxWidth, boxHeight, radius * 2, radius * 2))
+                val diameter = fontPx * PLATE_CORNER_RADIUS_RATIO * 2
+                g.fill(RoundRectangle2D.Float(left, top, boxWidth, boxHeight, diameter, diameter))
             }
             lines.forEachIndexed { index, line ->
-                val baseline = top + padV + metrics.ascent + lineHeight * index
-                val x = if (alignRight) left + padH + textWidth - metrics.stringWidth(line) else left + padH
+                val baseline = top + padV + lineHeight * index + baselineInLine
+                val x = if (alignRight) left + padH + textWidth - lineWidth(g, font, line) else left + padH
                 g.color = Color(255, 255, 255, 240)
                 g.drawString(line, x, baseline)
             }
@@ -72,8 +82,9 @@ object CaptionRenderer {
         }
     }
 
-    private fun maxLineWidth(g: Graphics2D, font: Font, lines: List<String>): Int {
-        val metrics = g.getFontMetrics(font)
-        return lines.maxOf { metrics.stringWidth(it) }
-    }
+    private fun maxLineWidth(g: Graphics2D, font: Font, lines: List<String>): Float =
+        lines.maxOf { lineWidth(g, font, it) }
+
+    private fun lineWidth(g: Graphics2D, font: Font, line: String): Float =
+        font.getStringBounds(line, g.fontRenderContext).width.toFloat()
 }
