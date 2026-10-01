@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -65,6 +66,7 @@ import java.io.File
 import java.util.Locale
 import kotlin.math.pow
 import kotlin.math.roundToInt
+import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
@@ -75,6 +77,7 @@ import com.imagepreptool.resources.ic_arrow_forward
 import com.imagepreptool.resources.ic_broken_image
 import com.imagepreptool.resources.ic_chevron_left
 import com.imagepreptool.resources.ic_chevron_right
+import com.imagepreptool.resources.ic_crop
 import com.imagepreptool.ui.components.Pill
 import com.imagepreptool.ui.components.SlantedToggle
 import com.imagepreptool.ui.theme.AppTheme
@@ -97,6 +100,7 @@ fun PreviewPane(
     total: Int,
     options: EditOptions,
     onMove: (Int) -> Unit,
+    onCropChange: (File, CropRect?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val zoom = remember(preview.file) { PreviewZoomState(initialScale = PreviewZoomState.MIN_SCALE, initialOffset = Offset.Zero) }
@@ -108,6 +112,7 @@ fun PreviewPane(
         options = options,
         zoom = zoom,
         onMove = onMove,
+        onCropChange = { crop -> preview.file?.let { onCropChange(it, crop) } },
         modifier = modifier,
     )
 }
@@ -121,10 +126,12 @@ private fun PreviewPaneContent(
     options: EditOptions,
     zoom: PreviewZoomState,
     onMove: (Int) -> Unit,
+    onCropChange: (CropRect?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ext = AppTheme.extended
     var mode by rememberSaveable { mutableStateOf(PreviewMode.Processed) }
+    var isCropEditing by rememberSaveable { mutableStateOf(false) }
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
 
@@ -163,28 +170,52 @@ private fun PreviewPaneContent(
         }
 
         // 画像
+        // 切り抜きは書き出し後の設定なので、書き出し後の表示でだけ編集する
+        val isCropping = isCropEditing && mode == PreviewMode.Processed
         Box(
-            modifier = Modifier.weight(1f).fillMaxWidth().clipToBounds().hoverable(interaction).previewZoomGestures(zoom),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clipToBounds()
+                .hoverable(interaction)
+                // 切り抜き中のドラッグは範囲の指定に使う
+                .then(if (isCropping) Modifier else Modifier.previewZoomGestures(zoom)),
             contentAlignment = Alignment.Center,
         ) {
-            val bitmap: ImageBitmap? = when (mode) {
-                PreviewMode.Processed -> preview.processed ?: preview.original
-                PreviewMode.Original -> preview.original
+            val bitmap: ImageBitmap? = when {
+                isCropping -> preview.original
+                mode == PreviewMode.Processed -> preview.processed ?: preview.original
+                else -> preview.original
             }
+            val originalSize = preview.originalSize
             when {
                 preview.error != null -> ErrorContent(preview.error)
+                bitmap != null && isCropping && originalSize != null -> CropEditor(
+                    bitmap = bitmap,
+                    imageSize = originalSize,
+                    crop = preview.crop,
+                    onCropChange = onCropChange,
+                    onDone = { isCropEditing = false },
+                )
                 bitmap != null -> FittedImage(bitmap, zoom)
                 preview.file != null -> CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.5.dp, color = ext.canvasContent)
                 else -> Text("画像を選択するとプレビューが表示されます", color = ext.canvasContent)
             }
 
-            ZoomResetButton(
-                zoom = zoom,
-                modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
-            )
+            if (!isCropping) {
+                Row(
+                    modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    if (mode == PreviewMode.Processed && bitmap != null) {
+                        CropButton(isCropped = preview.crop != null, onClick = { isCropEditing = true })
+                    }
+                    ZoomResetButton(zoom = zoom)
+                }
+            }
 
             LoadingBadge(
-                visible = preview.loading && bitmap != null,
+                visible = preview.loading && bitmap != null && !isCropping,
                 modifier = Modifier.align(Alignment.TopEnd).padding(14.dp),
             )
 
@@ -324,6 +355,21 @@ private fun Modifier.previewZoomGestures(zoom: PreviewZoomState): Modifier = thi
     }
 
 @Composable
+private fun CropButton(isCropped: Boolean, onClick: () -> Unit) {
+    FilledTonalButton(
+        onClick = onClick,
+        contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = if (isCropped) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        ),
+    ) {
+        Icon(painterResource(Res.drawable.ic_crop), null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(if (isCropped) "切り抜き中" else "切り抜き", style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable
 private fun ZoomResetButton(zoom: PreviewZoomState, modifier: Modifier = Modifier) {
     AnimatedVisibility(visible = zoom.isTransformed, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         FilledTonalButton(
@@ -404,6 +450,7 @@ private fun PreviewPaneForPreview(zoom: PreviewZoomState) {
                     outputFormat = OutputFormat.Jpeg,
                     outputByteSize = 1_234,
                     captionFields = mapOf(),
+                    crop = null,
                     loading = false,
                     error = null,
                 ),
@@ -413,6 +460,7 @@ private fun PreviewPaneForPreview(zoom: PreviewZoomState) {
                 options = EditOptions(),
                 zoom = zoom,
                 onMove = {},
+                onCropChange = {},
             )
         }
     }

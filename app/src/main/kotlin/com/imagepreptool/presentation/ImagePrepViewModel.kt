@@ -35,6 +35,7 @@ import com.imagepreptool.data.PreferencesSettingsStore
 import com.imagepreptool.data.SettingsStore
 import com.imagepreptool.model.CaptionField
 import com.imagepreptool.model.ConflictPolicy
+import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.ImageSize
@@ -42,6 +43,7 @@ import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.service.CaptionRenderer
 import com.imagepreptool.service.CaptionTemplate
+import com.imagepreptool.service.Cropper
 import com.imagepreptool.service.ExifService
 import com.imagepreptool.service.ExternalToolChecker
 import com.imagepreptool.service.ImageEncoder
@@ -81,6 +83,7 @@ class ImagePrepViewModel(
         override fun undoRemoval() = this@ImagePrepViewModel.undoRemoval()
         override fun updateOptions(transform: (EditOptions) -> EditOptions) = this@ImagePrepViewModel.updateOptions(transform)
         override fun setInputValid(field: String, valid: Boolean) = this@ImagePrepViewModel.setInputValid(field, valid)
+        override fun setCrop(file: File, crop: CropRect?) = this@ImagePrepViewModel.setCrop(file, crop)
         override fun chooseOutputDirectory(dir: File) = this@ImagePrepViewModel.chooseOutputDirectory(dir)
         override fun resetOutputDirectory() = this@ImagePrepViewModel.resetOutputDirectory()
         override fun requestExport() = this@ImagePrepViewModel.requestExport()
@@ -242,6 +245,7 @@ class ImagePrepViewModel(
                 export = ExportState.Idle,
                 lastRemoval = null,
                 removedFiles = emptySet(),
+                crops = mapOf(),
             )
         }
     }
@@ -408,6 +412,12 @@ class ImagePrepViewModel(
         mutate { it.copy(invalidInputs = if (valid) it.invalidInputs - field else it.invalidInputs + field) }
     }
 
+    private fun setCrop(file: File, crop: CropRect?) {
+        mutate { state ->
+            if (crop == null || crop.isFull) state.copy(crops = state.crops - file) else state.copy(crops = state.crops + (file to crop))
+        }
+    }
+
     private fun chooseOutputDirectory(dir: File) {
         mutate { it.copy(customOutputDir = dir) }
         settings.saveCustomOutputDir(dir)
@@ -447,7 +457,7 @@ class ImagePrepViewModel(
                         options = state.options,
                         // 書き出さない画像や一覧から削除した画像も元画像なので上書きしない
                         protectedFiles = state.images.map { it.file } + state.removedFiles,
-                    )
+                    ).map { it.copy(crop = state.crops[it.source]) }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -590,13 +600,15 @@ class ImagePrepViewModel(
         }
 
         // 非 HEIF 画像はツール確認前に開かれることがあり、cwebp が見つかったら WebP のプレビューを作り直す
-        viewModelStateFlow.map { it.options to (it.tools ?: tools) }.distinctUntilChanged().collectLatestSafe { (options, currentTools) ->
+        viewModelStateFlow.map { ProcessedPreviewKey(it.options, it.tools ?: tools, it.crops[file]) }.distinctUntilChanged().collectLatestSafe { key ->
+            val options = key.options
+            val currentTools = key.tools
             mutate { it.copy(preview = it.preview.copy(loading = true)) }
             val outputFormat = OutputPlanner.resolveFormat(file, options.outputFormat)
             // cwebp は外部プロセスで重いため、品質スライダー操作中は待ってからまとめてエンコードする
             delay(if (outputFormat == OutputFormat.Webp) 300 else 80)
-            val outputSize = Resizer.targetSize(source.loaded.size, options)
-            val image = source.loaded.image
+            val outputSize = Resizer.targetSize(Cropper.croppedSize(source.loaded.size, key.crop), options)
+            val image = Cropper.crop(source.loaded.image, key.crop)
             val renderSize = Resizer.fitWithin(outputSize, image.width, image.height)
             val processor = ImageProcessor(currentTools)
             val caption = if (options.captionEnabled) {
@@ -621,6 +633,8 @@ class ImagePrepViewModel(
             }
         }
     }
+
+    private data class ProcessedPreviewKey(val options: EditOptions, val tools: ExternalTools, val crop: CropRect?)
 
     private class RenderedPreview(val image: BufferedImage, val encodedByteSize: Long?)
 
@@ -685,6 +699,7 @@ private val EmptyPreview = PreviewState(
     outputFormat = null,
     outputByteSize = null,
     captionFields = mapOf(),
+    crop = null,
     loading = false,
     error = null,
 )
@@ -714,6 +729,8 @@ internal data class ImagePrepViewModelState(
     val lastRemoval: Removal? = null,
     /** このフォルダを開いてから一覧から削除した画像。元画像なので書き出しで上書きしない */
     val removedFiles: Set<File> = setOf(),
+    /** 画像ごとの切り抜き範囲。切り抜かない画像は含めない */
+    val crops: Map<File, CropRect> = mapOf(),
 ) {
     class Removal(
         /** 削除した画像と、削除前の一覧での位置（昇順） */
@@ -787,7 +804,7 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
         isCustomOutputDirectory = customOutputDir != null,
         tools = tools,
         recentFolders = recentFolders,
-        preview = preview,
+        preview = preview.copy(crop = preview.file?.let(crops::get)),
         export = export,
         notices = notices,
         isLoading = isLoading,

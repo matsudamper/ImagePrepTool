@@ -263,6 +263,7 @@ private fun Workspace(
                 total = uiState.images.size,
                 options = uiState.options,
                 onMove = uiState.listener::moveFocus,
+                onCropChange = uiState.listener::setCrop,
                 modifier = Modifier.weight(1f),
             )
             VerticalDivider(color = colors.outlineVariant)

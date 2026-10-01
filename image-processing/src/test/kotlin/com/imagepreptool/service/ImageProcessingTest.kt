@@ -14,6 +14,7 @@ import kotlin.test.assertTrue
 import com.imagepreptool.model.CaptionField
 import com.imagepreptool.model.CaptionStyle
 import com.imagepreptool.model.ConflictPolicy
+import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.ImageSize
@@ -259,6 +260,30 @@ class ImageProcessingTest {
         val result = ImageProcessor(ExternalTools.None).export(item, EditOptions(outputFormat = OutputFormat.Png))
         assertEquals(ProcessResult.Status.Failed, result.status)
         assertEquals("other", item.target.readText())
+    }
+
+    @Test
+    fun cropUsesRatioOfOrientedImage() {
+        val image = BufferedImage(200, 100, BufferedImage.TYPE_INT_RGB)
+        image.setRGB(150, 50, 0x00FF00)
+        val crop = CropRect(0.5f, 0.25f, 1f, 0.75f)
+        val cropped = Cropper.crop(image, crop)
+        assertEquals(ImageSize(100, 50), ImageSize(cropped.width, cropped.height))
+        assertEquals(0x00FF00, cropped.getRGB(50, 25) and 0xFFFFFF)
+        assertEquals(ImageSize(2000, 1000), Cropper.croppedSize(ImageSize(4000, 2000), crop))
+        assertEquals(ImageSize(4000, 2000), Cropper.croppedSize(ImageSize(4000, 2000), null))
+    }
+
+    @Test
+    fun exportAppliesCropBeforeResize() {
+        val src = writeImage("crop.png")
+        val options = EditOptions(resizeMode = ResizeMode.LongEdge, longEdge = 16, outputFormat = OutputFormat.Png, captionEnabled = false)
+        val item = OutputPlanner.plan(listOf(src), File(dir, "out"), options).single().copy(crop = CropRect(0f, 0f, 0.5f, 1f))
+        val result = ImageProcessor(ExternalTools.None).export(item, options)
+        assertEquals(ProcessResult.Status.Success, result.status, result.message)
+        val written = ImageIO.read(item.target)
+        // 64x48 の左半分（32x48）を長辺 16 に縮小する
+        assertEquals(ImageSize(11, 16), ImageSize(written.width, written.height))
     }
 
     @Test

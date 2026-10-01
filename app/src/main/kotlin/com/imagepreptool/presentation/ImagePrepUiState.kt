@@ -5,6 +5,7 @@ import androidx.compose.ui.graphics.ImageBitmap
 import java.io.File
 import com.imagepreptool.model.CaptionField
 import com.imagepreptool.model.ConflictPolicy
+import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.ImageSize
@@ -35,6 +36,8 @@ data class PreviewState(
     val outputByteSize: Long?,
     /** この画像の撮影情報（テンプレートの項目ごと） */
     val captionFields: Map<CaptionField, String>,
+    /** この画像の切り抜き範囲。切り抜かないときは null */
+    val crop: CropRect?,
     val loading: Boolean,
     val error: String?,
 )
@@ -131,6 +134,7 @@ data class ImagePrepUiState(
         fun undoRemoval()
         fun updateOptions(transform: (EditOptions) -> EditOptions)
         fun setInputValid(field: String, valid: Boolean)
+        fun setCrop(file: File, crop: CropRect?)
         fun chooseOutputDirectory(dir: File)
         fun resetOutputDirectory()
         fun requestExport()
