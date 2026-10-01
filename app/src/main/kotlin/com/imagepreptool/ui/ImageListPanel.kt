@@ -69,7 +69,6 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
@@ -165,7 +164,7 @@ fun ImageListPanel(
 
         Box(Modifier.weight(1f)) {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = ThumbnailMinSize),
+                columns = GridCells.Fixed(ImageColumnCount),
                 state = gridState,
                 contentPadding = PaddingValues(start = GridHorizontalPadding, end = GridHorizontalPadding, bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(GridColumnSpacing),
@@ -183,7 +182,6 @@ fun ImageListPanel(
                     .focusRequester(focusRequester)
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        val columns = density.adaptiveColumnCount(gridState.layoutInfo.viewportSize.width)
                         val visibleGroups = imageGroups.filter { it.folder !in collapsedFolders }
                         val visibleFocusedFile = focusedFile?.takeIf { file -> visibleGroups.any { group -> group.images.any { it.file == file } } }
                         val moveFocusInVisible = { visibleDelta: Int ->
@@ -194,8 +192,8 @@ fun ImageListPanel(
                         when (event.key) {
                             Key.DirectionLeft -> moveFocusInVisible(-1)
                             Key.DirectionRight -> moveFocusInVisible(1)
-                            Key.DirectionUp -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = false))
-                            Key.DirectionDown -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = true))
+                            Key.DirectionUp -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, ImageColumnCount, downward = false))
+                            Key.DirectionDown -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, ImageColumnCount, downward = true))
                             Key.Delete -> if (isSelectionMode) onRemoveSelection() else visibleFocusedFile?.let(onRemove)
                             Key.Escape -> onClearSelection()
                             Key.A -> if (event.isCtrlPressed || event.isMetaPressed) onSelectAll() else return@onPreviewKeyEvent false
@@ -311,13 +309,6 @@ internal fun verticalMoveDelta(imageGroups: List<ImageGroup>, focusedFile: File?
     return target - (groupStart + indexInGroup)
 }
 
-/** GridCells.Adaptive と同じ計算でグリッドの列数を求める。見えている行が短い位置までスクロールしていても正しい列数になる */
-private fun Density.adaptiveColumnCount(viewportWidthPx: Int): Int {
-    val gridWidth = viewportWidthPx - (GridHorizontalPadding * 2).roundToPx()
-    val spacing = GridColumnSpacing.roundToPx()
-    return ((gridWidth + spacing) / (ThumbnailMinSize.roundToPx() + spacing)).coerceAtLeast(1)
-}
-
 /** 親の contentPadding を越えて左右いっぱいまで広げる */
 private fun Modifier.extendHorizontally(extension: Dp): Modifier = layout { measurable, constraints ->
     val extensionPx = extension.roundToPx()
@@ -328,7 +319,7 @@ private fun Modifier.extendHorizontally(extension: Dp): Modifier = layout { meas
 }
 
 private val FolderHeaderHeight = 44.dp
-private val ThumbnailMinSize = 84.dp
+private const val ImageColumnCount = 3
 private val GridHorizontalPadding = 12.dp
 private val GridColumnSpacing = 8.dp
 

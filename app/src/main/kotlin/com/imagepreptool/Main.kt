@@ -1,5 +1,6 @@
 package com.imagepreptool
 
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.input.key.Key
@@ -22,6 +23,7 @@ import com.imagepreptool.presentation.ImagePrepViewModel
 import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_app_icon
 import com.imagepreptool.ui.App
+import com.imagepreptool.ui.CopyOnlyFileDrop
 import com.imagepreptool.ui.DesktopDialogs
 import com.imagepreptool.ui.theme.AppTheme
 import org.jetbrains.compose.resources.painterResource
@@ -68,6 +70,7 @@ fun main(args: Array<String>) {
             },
         ) {
             composeWindow = window
+            LaunchedEffect(window) { CopyOnlyFileDrop.install(window) }
             window.minimumSize = Dimension(1100, 680)
             AppTheme {
                 App(viewModel, dialogParent = window, exitApp = exitApp)
