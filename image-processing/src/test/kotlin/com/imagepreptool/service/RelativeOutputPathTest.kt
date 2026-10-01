@@ -13,16 +13,14 @@ class RelativeOutputPathTest {
     fun resolvesInsideSourceFolder() {
         assertEquals(File("/photos/output/web").absoluteFile, RelativeOutputPath.resolve(File("/photos"), "output/web"))
         assertEquals(File("/photos/output").absoluteFile, RelativeOutputPath.resolve(File("/photos"), "./output"))
+        assertEquals(File("/export").absoluteFile, RelativeOutputPath.resolve(File("/photos"), "../export"))
     }
 
     @Test
-    fun rejectsParentAndAbsolutePaths() {
-        assertFalse(RelativeOutputPath.isValid(".."))
-        assertFalse(RelativeOutputPath.isValid("../output"))
-        assertFalse(RelativeOutputPath.isValid("output/../../x"))
+    fun rejectsAbsoluteAndBlankPaths() {
         assertFalse(RelativeOutputPath.isValid("/tmp/output"))
         assertFalse(RelativeOutputPath.isValid(" "))
-        assertNull(RelativeOutputPath.resolve(File("/photos"), "../output"))
+        assertNull(RelativeOutputPath.resolve(File("/photos"), "/tmp/output"))
         assertTrue(RelativeOutputPath.isValid("output"))
     }
 }

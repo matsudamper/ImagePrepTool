@@ -481,7 +481,7 @@ private fun OutputSection(
             }
         }
         if (pathMode == OutputPathMode.Relative) {
-            Hint("元画像のフォルダからの相対パスに保存します。元画像のフォルダより上（..）は指定できません。")
+            Hint("元画像のフォルダからの相対パスに保存します（例: ../export）。")
         } else if (isCustom) {
             TextButton(onClick = onReset, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.height(28.dp)) {
                 Text("元画像のフォルダ内「output」に戻す", style = MaterialTheme.typography.labelMedium)

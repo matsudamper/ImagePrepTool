@@ -793,7 +793,7 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
     val outputDir = outputDir
     val notices = buildList {
         if (isRelativeOutputPathInvalid) {
-            add(Notice("書き出し先の相対パスには、元画像のフォルダより上（..）や絶対パスを指定できません。", blocking = true, action = null))
+            add(Notice("書き出し先の相対パスを入力してください（絶対パスは指定できません）。", blocking = true, action = null))
         }
         if (invalidInputs.isNotEmpty()) {
             add(Notice("サイズは ${EditOptions.MIN_DIMENSION}〜${EditOptions.MAX_DIMENSION} px で入力してください。", blocking = true, action = null))

@@ -7,7 +7,6 @@ import java.nio.file.Path
 object RelativeOutputPath {
     const val DEFAULT = "output"
 
-    /** 元画像のフォルダより上や外を指すパスは受け付けない */
     fun isValid(relativePath: String): Boolean {
         if (relativePath.isBlank()) return false
         val path = try {
@@ -16,8 +15,7 @@ object RelativeOutputPath {
             return false
         }
         // Windows の「C:foo」や「\foo」は isAbsolute が false でも root を持つ
-        if (path.isAbsolute || path.root != null) return false
-        return path.none { it.toString() == ".." }
+        return !path.isAbsolute && path.root == null
     }
 
     fun resolve(baseDir: File, relativePath: String): File? =
