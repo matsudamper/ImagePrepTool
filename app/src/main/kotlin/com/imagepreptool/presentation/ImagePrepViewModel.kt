@@ -40,6 +40,7 @@ import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.OutputPathMode
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.service.CaptionRenderer
 import com.imagepreptool.service.CaptionTemplate
@@ -52,6 +53,7 @@ import com.imagepreptool.service.ImageProcessor
 import com.imagepreptool.service.LoadedImage
 import com.imagepreptool.service.OutputPlanner
 import com.imagepreptool.service.PlannedOutput
+import com.imagepreptool.service.RelativeOutputPath
 import com.imagepreptool.service.Resizer
 
 class ImagePrepViewModel(
@@ -63,6 +65,8 @@ class ImagePrepViewModel(
         ImagePrepViewModelState(
             options = settings.loadOptions(),
             customOutputDir = settings.loadCustomOutputDir(),
+            outputPathMode = settings.loadOutputPathMode(),
+            relativeOutputPath = settings.loadRelativeOutputPath(),
             recentFolders = settings.loadRecentFolders(),
         ),
     )
@@ -86,6 +90,8 @@ class ImagePrepViewModel(
         override fun setCrop(file: File, crop: CropRect?) = this@ImagePrepViewModel.setCrop(file, crop)
         override fun chooseOutputDirectory(dir: File) = this@ImagePrepViewModel.chooseOutputDirectory(dir)
         override fun resetOutputDirectory() = this@ImagePrepViewModel.resetOutputDirectory()
+        override fun setOutputPathMode(mode: OutputPathMode) = this@ImagePrepViewModel.setOutputPathMode(mode)
+        override fun setRelativeOutputPath(path: String) = this@ImagePrepViewModel.setRelativeOutputPath(path)
         override fun requestExport() = this@ImagePrepViewModel.requestExport()
         override fun resolveConflicts(policy: ConflictPolicy?) = this@ImagePrepViewModel.resolveConflicts(policy)
         override fun cancelExport() = this@ImagePrepViewModel.cancelExport()
@@ -428,6 +434,16 @@ class ImagePrepViewModel(
         settings.saveCustomOutputDir(null)
     }
 
+    private fun setOutputPathMode(mode: OutputPathMode) {
+        mutate { it.copy(outputPathMode = mode) }
+        settings.saveOutputPathMode(mode)
+    }
+
+    private fun setRelativeOutputPath(path: String) {
+        mutate { it.copy(relativeOutputPath = path) }
+        settings.saveRelativeOutputPath(path)
+    }
+
     private fun refreshTools() {
         viewModelScope.launch {
             val tools = withContext(Dispatchers.IO) { checkTools() }
@@ -718,6 +734,9 @@ internal data class ImagePrepViewModelState(
     val isSelectionMode: Boolean = false,
     val options: EditOptions = EditOptions(),
     val customOutputDir: File? = null,
+    val outputPathMode: OutputPathMode = OutputPathMode.Absolute,
+    /** [outputPathMode] が相対パスのときの、元画像のフォルダからのパス */
+    val relativeOutputPath: String = RelativeOutputPath.DEFAULT,
     val tools: ExternalTools? = null,
     val recentFolders: List<File> = emptyList(),
     val preview: PreviewState = EmptyPreview,
@@ -746,7 +765,20 @@ internal data class ImagePrepViewModelState(
         get() = images.filter { it.file in effectiveSelection }
 
     val defaultOutputDir: File?
-        get() = images.firstOrNull()?.file?.folder?.let { File(it, "output") }
+        get() = sourceFolder?.let { File(it, RelativeOutputPath.DEFAULT) }
+
+    /** 相対パスの基準。複数フォルダの画像があっても先頭の画像のフォルダにまとめる */
+    val sourceFolder: File?
+        get() = images.firstOrNull()?.file?.folder
+
+    val outputDir: File?
+        get() = when (outputPathMode) {
+            OutputPathMode.Absolute -> customOutputDir ?: defaultOutputDir
+            OutputPathMode.Relative -> sourceFolder?.let { RelativeOutputPath.resolve(it, relativeOutputPath) }
+        }
+
+    val isRelativeOutputPathInvalid: Boolean
+        get() = outputPathMode == OutputPathMode.Relative && !RelativeOutputPath.isValid(relativeOutputPath)
 
     val effectiveSelection: Set<File>
         get() = selection.ifEmpty { setOfNotNull(focusedFile) }
@@ -758,8 +790,11 @@ internal data class ImagePrepViewModelState(
 
 internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listener): ImagePrepUiState {
     val targets = exportTargets
-    val outputDir = customOutputDir ?: defaultOutputDir
+    val outputDir = outputDir
     val notices = buildList {
+        if (isRelativeOutputPathInvalid) {
+            add(Notice("書き出し先の相対パスには、元画像のフォルダより上（..）や絶対パスを指定できません。", blocking = true, action = null))
+        }
         if (invalidInputs.isNotEmpty()) {
             add(Notice("サイズは ${EditOptions.MIN_DIMENSION}〜${EditOptions.MAX_DIMENSION} px で入力してください。", blocking = true, action = null))
         }
@@ -787,7 +822,8 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
             add(Notice("出力先が元画像と同じフォルダです。元画像は上書きされず「(2)」付きの名前で保存されます。接尾辞の設定がおすすめです。", blocking = false, action = null))
         }
         val targetFolderCount = targets.map { it.file.folder }.distinct().size
-        if (outputDir != null && customOutputDir == null && targetFolderCount > 1) {
+        val isMergedIntoFirstFolder = outputPathMode == OutputPathMode.Relative || customOutputDir == null
+        if (outputDir != null && isMergedIntoFirstFolder && targetFolderCount > 1) {
             add(Notice("$targetFolderCount つのフォルダの画像を 1 つの出力先にまとめて書き出します。", blocking = false, action = null))
         }
     }
@@ -802,6 +838,8 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
         options = options,
         outputDirectory = outputDir,
         isCustomOutputDirectory = customOutputDir != null,
+        outputPathMode = outputPathMode,
+        relativeOutputPath = relativeOutputPath,
         tools = tools,
         recentFolders = recentFolders,
         preview = preview.copy(crop = preview.file?.let(crops::get)),

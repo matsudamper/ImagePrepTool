@@ -62,6 +62,7 @@ import com.imagepreptool.model.CaptionPosition
 import com.imagepreptool.model.CaptionStyle
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.OutputPathMode
 import com.imagepreptool.model.ResizeMode
 import com.imagepreptool.presentation.Notice
 import com.imagepreptool.presentation.NoticeAction
@@ -89,6 +90,8 @@ fun SettingsPanel(
     sampleFile: File?,
     outputDirectory: File?,
     isCustomOutputDirectory: Boolean,
+    outputPathMode: OutputPathMode,
+    relativeOutputPath: String,
     notices: List<Notice>,
     exportCount: Int,
     canExport: Boolean,
@@ -96,6 +99,8 @@ fun SettingsPanel(
     onInputValidityChange: (String, Boolean) -> Unit,
     onChooseOutput: () -> Unit,
     onResetOutput: () -> Unit,
+    onOutputPathModeChange: (OutputPathMode) -> Unit,
+    onRelativeOutputPathChange: (String) -> Unit,
     onNoticeAction: (NoticeAction) -> Unit,
     onExport: () -> Unit,
     modifier: Modifier = Modifier,
@@ -109,7 +114,19 @@ fun SettingsPanel(
             HorizontalDivider(color = colors.outlineVariant)
             CaptionSection(options, captionFields, hasFocusedImage, onOptionsChange)
             HorizontalDivider(color = colors.outlineVariant)
-            OutputSection(options, sampleFile, outputDirectory, isCustomOutputDirectory, onOptionsChange, onChooseOutput, onResetOutput)
+            OutputSection(
+                options = options,
+                sampleFile = sampleFile,
+                outputDirectory = outputDirectory,
+                isCustom = isCustomOutputDirectory,
+                pathMode = outputPathMode,
+                relativePath = relativeOutputPath,
+                onChange = onOptionsChange,
+                onChoose = onChooseOutput,
+                onReset = onResetOutput,
+                onPathModeChange = onOutputPathModeChange,
+                onRelativePathChange = onRelativeOutputPathChange,
+            )
         }
 
         // 書き出しボタンは常に見える位置に置く
@@ -407,12 +424,30 @@ private fun OutputSection(
     sampleFile: File?,
     outputDirectory: File?,
     isCustom: Boolean,
+    pathMode: OutputPathMode,
+    relativePath: String,
     onChange: ((EditOptions) -> EditOptions) -> Unit,
     onChoose: () -> Unit,
     onReset: () -> Unit,
+    onPathModeChange: (OutputPathMode) -> Unit,
+    onRelativePathChange: (String) -> Unit,
 ) {
     val colors = MaterialTheme.colorScheme
     SettingsSection("書き出し先") {
+        SegmentedControl(
+            options = OutputPathMode.entries,
+            selected = pathMode,
+            onSelect = onPathModeChange,
+            label = { it.label },
+        )
+        if (pathMode == OutputPathMode.Relative) {
+            CompactTextField(
+                value = relativePath,
+                onValueChange = onRelativePathChange,
+                placeholder = "例: output/web",
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
         Surface(
             color = colors.surfaceContainer,
             shape = MaterialTheme.shapes.small,
@@ -436,14 +471,18 @@ private fun OutputSection(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                OutlinedButton(
-                    onClick = onChoose,
-                    contentPadding = PaddingValues(horizontal = 12.dp),
-                    modifier = Modifier.height(32.dp),
-                ) { Text("変更…", style = MaterialTheme.typography.labelLarge) }
+                if (pathMode == OutputPathMode.Absolute) {
+                    OutlinedButton(
+                        onClick = onChoose,
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        modifier = Modifier.height(32.dp),
+                    ) { Text("変更…", style = MaterialTheme.typography.labelLarge) }
+                }
             }
         }
-        if (isCustom) {
+        if (pathMode == OutputPathMode.Relative) {
+            Hint("元画像のフォルダからの相対パスに保存します。元画像のフォルダより上（..）は指定できません。")
+        } else if (isCustom) {
             TextButton(onClick = onReset, contentPadding = PaddingValues(horizontal = 4.dp), modifier = Modifier.height(28.dp)) {
                 Text("元画像のフォルダ内「output」に戻す", style = MaterialTheme.typography.labelMedium)
             }

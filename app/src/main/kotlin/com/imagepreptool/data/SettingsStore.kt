@@ -3,6 +3,8 @@ package com.imagepreptool.data
 import java.io.File
 import java.util.prefs.Preferences
 import com.imagepreptool.model.EditOptions
+import com.imagepreptool.model.OutputPathMode
+import com.imagepreptool.service.RelativeOutputPath
 
 /** 前回の設定を次回起動時に復元する */
 interface SettingsStore {
@@ -10,6 +12,10 @@ interface SettingsStore {
     fun saveOptions(options: EditOptions)
     fun loadCustomOutputDir(): File?
     fun saveCustomOutputDir(dir: File?)
+    fun loadOutputPathMode(): OutputPathMode
+    fun saveOutputPathMode(mode: OutputPathMode)
+    fun loadRelativeOutputPath(): String
+    fun saveRelativeOutputPath(path: String)
     fun loadRecentFolders(): List<File>
     fun saveRecentFolders(folders: List<File>)
 }
@@ -69,6 +75,18 @@ class PreferencesSettingsStore(
         if (dir == null) prefs.remove("customOutputDir") else prefs.put("customOutputDir", dir.absolutePath)
     }
 
+    override fun loadOutputPathMode(): OutputPathMode = enumOr(prefs.get("outputPathMode", null), OutputPathMode.Absolute)
+
+    override fun saveOutputPathMode(mode: OutputPathMode) = safely {
+        prefs.put("outputPathMode", mode.name)
+    }
+
+    override fun loadRelativeOutputPath(): String = prefs.get("relativeOutputPath", RelativeOutputPath.DEFAULT)
+
+    override fun saveRelativeOutputPath(path: String) = safely {
+        prefs.put("relativeOutputPath", path)
+    }
+
     override fun loadRecentFolders(): List<File> =
         prefs.get("recentFolders", "").lines().filter { it.isNotBlank() }.map(::File).filter { it.isDirectory }
 
@@ -90,6 +108,8 @@ class PreferencesSettingsStore(
 class InMemorySettingsStore(
     private var options: EditOptions = EditOptions(),
     private var customOutputDir: File? = null,
+    private var outputPathMode: OutputPathMode = OutputPathMode.Absolute,
+    private var relativeOutputPath: String = RelativeOutputPath.DEFAULT,
     private var recent: List<File> = emptyList(),
 ) : SettingsStore {
     override fun loadOptions() = options
@@ -99,6 +119,14 @@ class InMemorySettingsStore(
     override fun loadCustomOutputDir() = customOutputDir
     override fun saveCustomOutputDir(dir: File?) {
         customOutputDir = dir
+    }
+    override fun loadOutputPathMode() = outputPathMode
+    override fun saveOutputPathMode(mode: OutputPathMode) {
+        outputPathMode = mode
+    }
+    override fun loadRelativeOutputPath() = relativeOutputPath
+    override fun saveRelativeOutputPath(path: String) {
+        relativeOutputPath = path
     }
     override fun loadRecentFolders() = recent
     override fun saveRecentFolders(folders: List<File>) {

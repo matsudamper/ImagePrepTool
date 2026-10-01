@@ -274,6 +274,8 @@ private fun Workspace(
                 sampleFile = uiState.focusedFile ?: uiState.images.firstOrNull()?.file,
                 outputDirectory = uiState.outputDirectory,
                 isCustomOutputDirectory = uiState.isCustomOutputDirectory,
+                outputPathMode = uiState.outputPathMode,
+                relativeOutputPath = uiState.relativeOutputPath,
                 notices = uiState.notices,
                 exportCount = uiState.exportCount,
                 canExport = uiState.canExport,
@@ -286,6 +288,8 @@ private fun Workspace(
                     }
                 },
                 onResetOutput = uiState.listener::resetOutputDirectory,
+                onOutputPathModeChange = uiState.listener::setOutputPathMode,
+                onRelativeOutputPathChange = uiState.listener::setRelativeOutputPath,
                 onNoticeAction = { action ->
                     when (action) {
                         NoticeAction.RemoveUnreadable -> uiState.listener.removeUnreadable()

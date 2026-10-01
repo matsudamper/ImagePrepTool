@@ -53,6 +53,11 @@ enum class CaptionStyle(val label: String) {
     Plain("影なし"),
 }
 
+enum class OutputPathMode(val label: String) {
+    Absolute("絶対パス"),
+    Relative("相対パス"),
+}
+
 enum class ConflictPolicy(val label: String) {
     Rename("別名で保存"),
     Overwrite("上書き"),
