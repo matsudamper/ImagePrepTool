@@ -131,3 +131,16 @@ data class ExternalTools(val statuses: List<ExternalToolStatus>) {
         val None = ExternalTools(emptyList())
     }
 }
+
+/**
+ * 切り抜く範囲。向き補正後の画像に対する割合（0〜1）で持ち、プレビュー用に縮小した画像にも同じ範囲を当てられるようにする
+ */
+data class CropRect(val left: Float, val top: Float, val right: Float, val bottom: Float) {
+    val width: Float get() = right - left
+    val height: Float get() = bottom - top
+    val isFull: Boolean get() = left <= 0f && top <= 0f && right >= 1f && bottom >= 1f
+
+    companion object {
+        val Full = CropRect(0f, 0f, 1f, 1f)
+    }
+}

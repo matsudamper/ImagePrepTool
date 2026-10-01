@@ -3,6 +3,7 @@ package com.imagepreptool.service
 import java.io.File
 import java.nio.file.Path
 import com.imagepreptool.model.ConflictPolicy
+import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.OutputFormat
 
@@ -12,6 +13,7 @@ data class PlannedOutput(
     val format: OutputFormat,
     /** 同名ファイルが出力先に既にある */
     val exists: Boolean,
+    val crop: CropRect?,
     val skip: Boolean = false,
 )
 
@@ -83,7 +85,7 @@ object OutputPlanner {
                 target = nextFreeName(target) { it.key() in used || isOriginal(it) || it.exists() }
             }
             used += target.key()
-            PlannedOutput(source, target, format, exists = target.exists())
+            PlannedOutput(source, target, format, exists = target.exists(), crop = null)
         }
     }
 
