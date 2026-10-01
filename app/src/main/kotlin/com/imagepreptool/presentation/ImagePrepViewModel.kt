@@ -38,20 +38,24 @@ import com.imagepreptool.model.ConflictPolicy
 import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
+import com.imagepreptool.model.FileDates
 import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.OutputPathMode
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.service.CaptionRenderer
 import com.imagepreptool.service.CaptionTemplate
 import com.imagepreptool.service.Cropper
 import com.imagepreptool.service.ExifService
 import com.imagepreptool.service.ExternalToolChecker
+import com.imagepreptool.service.FileDatesReader
 import com.imagepreptool.service.ImageEncoder
 import com.imagepreptool.service.ImageLoader
 import com.imagepreptool.service.ImageProcessor
 import com.imagepreptool.service.LoadedImage
 import com.imagepreptool.service.OutputPlanner
 import com.imagepreptool.service.PlannedOutput
+import com.imagepreptool.service.RelativeOutputPath
 import com.imagepreptool.service.Resizer
 
 class ImagePrepViewModel(
@@ -62,7 +66,8 @@ class ImagePrepViewModel(
     private val viewModelStateFlow = MutableStateFlow(
         ImagePrepViewModelState(
             options = settings.loadOptions(),
-            customOutputDir = settings.loadCustomOutputDir(),
+            outputPathMode = settings.loadOutputPathMode(),
+            relativeOutputPath = settings.loadRelativeOutputPath(),
             recentFolders = settings.loadRecentFolders(),
         ),
     )
@@ -76,6 +81,8 @@ class ImagePrepViewModel(
         override fun selectAll() = this@ImagePrepViewModel.selectAll()
         override fun clearSelection() = this@ImagePrepViewModel.clearSelection()
         override fun moveFocus(delta: Int) = this@ImagePrepViewModel.moveFocus(delta)
+        override fun selectSortKey(key: ImageSortKey) = this@ImagePrepViewModel.selectSortKey(key)
+        override fun toggleSortDirection() = this@ImagePrepViewModel.toggleSortDirection()
         override fun removeImage(file: File) = this@ImagePrepViewModel.removeImage(file)
         override fun removeSelection() = this@ImagePrepViewModel.removeSelection()
         override fun removeFolder(folder: File) = this@ImagePrepViewModel.removeFolder(folder)
@@ -85,7 +92,8 @@ class ImagePrepViewModel(
         override fun setInputValid(field: String, valid: Boolean) = this@ImagePrepViewModel.setInputValid(field, valid)
         override fun setCrop(file: File, crop: CropRect?) = this@ImagePrepViewModel.setCrop(file, crop)
         override fun chooseOutputDirectory(dir: File) = this@ImagePrepViewModel.chooseOutputDirectory(dir)
-        override fun resetOutputDirectory() = this@ImagePrepViewModel.resetOutputDirectory()
+        override fun setOutputPathMode(mode: OutputPathMode) = this@ImagePrepViewModel.setOutputPathMode(mode)
+        override fun setRelativeOutputPath(path: String) = this@ImagePrepViewModel.setRelativeOutputPath(path)
         override fun requestExport() = this@ImagePrepViewModel.requestExport()
         override fun resolveConflicts(policy: ConflictPolicy?) = this@ImagePrepViewModel.resolveConflicts(policy)
         override fun cancelExport() = this@ImagePrepViewModel.cancelExport()
@@ -151,12 +159,12 @@ class ImagePrepViewModel(
                 val existing = state.images.map { it.file.absoluteFile }.toSet()
                 val added = files.map { it.absoluteFile }.filter { it !in existing }
                 if (state.images.isEmpty()) {
-                    state.copy(
-                        images = added.map(::ImageItem),
-                        isWorkspaceOpen = true,
-                        focusedFile = added.firstOrNull(),
-                        selection = added.take(1).toSet(),
-                        anchor = added.firstOrNull(),
+                    val loaded = state.copy(images = added.map(::ImageItem), isWorkspaceOpen = true)
+                    val first = loaded.orderedImages.firstOrNull()?.file
+                    loaded.copy(
+                        focusedFile = first,
+                        selection = setOfNotNull(first),
+                        anchor = first,
                         isSelectionMode = false,
                         lastRemoval = null,
                         removedFiles = emptySet(),
@@ -168,6 +176,7 @@ class ImagePrepViewModel(
                     )
                 }
             }
+            loadFileDates(files.map { it.absoluteFile })
             rememberRecent(dir)
         }
     }
@@ -201,12 +210,22 @@ class ImagePrepViewModel(
                     focusedFile = state.focusedFile ?: added.firstOrNull(),
                 )
             }
+            loadFileDates(added)
             val message = buildList {
                 if (added.isNotEmpty()) add("${added.size} 枚を追加しました")
                 if (supported.size > added.size) add("${supported.size - added.size} 枚は追加済みです")
                 if (ignored > 0) add("非対応の $ignored 件を除外しました")
             }.ifEmpty { listOf("追加できる画像がありません") }
             messageChannel.send(SnackbarMessage(message.joinToString("・")))
+        }
+    }
+
+    /** 撮影日などでの並べ替えに使う日時を後から読む。読み終わるまでの画像は日時の無い画像として並ぶ */
+    private fun loadFileDates(files: List<File>) {
+        if (files.isEmpty()) return
+        viewModelScope.launch {
+            val dates = runInterruptible(Dispatchers.IO) { files.associateWith(FileDatesReader::read) }
+            mutate { it.copy(fileDates = it.fileDates + dates) }
         }
     }
 
@@ -249,6 +268,7 @@ class ImagePrepViewModel(
                 lastRemoval = null,
                 removedFiles = emptySet(),
                 crops = mapOf(),
+                fileDates = mapOf(),
             )
         }
     }
@@ -280,9 +300,10 @@ class ImagePrepViewModel(
             val images = state.images.filter { it.file !in targets }
             val focused = if (state.focusedFile in targets) {
                 // 消した位置の次にある画像をプレビューする
-                val firstRemovedIndex = removed.first().index
-                val after = state.images.drop(firstRemovedIndex).firstOrNull { it.file !in targets }
-                (after ?: images.lastOrNull())?.file
+                val ordered = state.orderedImages
+                val firstRemovedIndex = ordered.indexOfFirst { it.file in targets }
+                val after = ordered.drop(firstRemovedIndex).firstOrNull { it.file !in targets }
+                (after ?: ordered.lastOrNull { it.file !in targets })?.file
             } else {
                 state.focusedFile
             }
@@ -376,10 +397,11 @@ class ImagePrepViewModel(
                     )
                 }
                 SelectMode.Range -> {
-                    val from = state.images.indexOfFirst { it.file == (state.anchor ?: state.focusedFile) }
-                    val to = state.images.indexOfFirst { it.file == file }
+                    val ordered = state.orderedImages
+                    val from = ordered.indexOfFirst { it.file == (state.anchor ?: state.focusedFile) }
+                    val to = ordered.indexOfFirst { it.file == file }
                     if (from < 0 || to < 0) return@mutate state.copy(focusedFile = file, selection = setOf(file), anchor = file, isSelectionMode = false)
-                    val range = state.images.subList(minOf(from, to), maxOf(from, to) + 1).map { it.file }
+                    val range = ordered.subList(minOf(from, to), maxOf(from, to) + 1).map { it.file }
                     state.copy(selection = range.toSet(), focusedFile = state.focusedFile ?: file, isSelectionMode = range.size > 1)
                 }
             }
@@ -396,11 +418,20 @@ class ImagePrepViewModel(
 
     private fun moveFocus(delta: Int) {
         mutate { state ->
-            if (state.images.isEmpty()) return@mutate state
-            val current = state.images.indexOfFirst { it.file == state.focusedFile }.coerceAtLeast(0)
-            val next = state.images[(current + delta).coerceIn(0, state.images.lastIndex)].file
+            val ordered = state.orderedImages
+            if (ordered.isEmpty()) return@mutate state
+            val current = ordered.indexOfFirst { it.file == state.focusedFile }.coerceAtLeast(0)
+            val next = ordered[(current + delta).coerceIn(0, ordered.lastIndex)].file
             state.copy(focusedFile = next, selection = setOf(next), anchor = next, isSelectionMode = false)
         }
+    }
+
+    private fun selectSortKey(key: ImageSortKey) {
+        mutate { it.copy(sortOrder = it.sortOrder.copy(key = key)) }
+    }
+
+    private fun toggleSortDirection() {
+        mutate { it.copy(sortOrder = it.sortOrder.copy(ascending = !it.sortOrder.ascending)) }
     }
 
     // endregion
@@ -422,13 +453,17 @@ class ImagePrepViewModel(
     }
 
     private fun chooseOutputDirectory(dir: File) {
-        mutate { it.copy(customOutputDir = dir) }
-        settings.saveCustomOutputDir(dir)
+        mutate { it.copy(selectedOutputDir = dir) }
     }
 
-    private fun resetOutputDirectory() {
-        mutate { it.copy(customOutputDir = null) }
-        settings.saveCustomOutputDir(null)
+    private fun setOutputPathMode(mode: OutputPathMode) {
+        mutate { it.copy(outputPathMode = mode) }
+        settings.saveOutputPathMode(mode)
+    }
+
+    private fun setRelativeOutputPath(path: String) {
+        mutate { it.copy(relativeOutputPath = path) }
+        settings.saveRelativeOutputPath(path)
     }
 
     private fun refreshTools() {
@@ -708,7 +743,7 @@ private val EmptyPreview = PreviewState(
 )
 
 internal data class ImagePrepViewModelState(
-    /** 同じフォルダの画像が続けて並ぶ（[groupedByFolder]） */
+    /** 同じフォルダの画像が続けて並ぶ（[groupedByFolder]）。フォルダ内は追加した順で、画面の並びは [orderedImages] */
     val images: List<ImageItem> = emptyList(),
     /** 一覧の画像をすべて削除してもホームに戻さないため、画像の有無とは別に持つ */
     val isWorkspaceOpen: Boolean = false,
@@ -722,7 +757,11 @@ internal data class ImagePrepViewModelState(
      */
     val isSelectionMode: Boolean = false,
     val options: EditOptions = EditOptions(),
-    val customOutputDir: File? = null,
+    /** 絶対パスで選んだ書き出し先。起動のたびに選び直してもらうため保存しない */
+    val selectedOutputDir: File? = null,
+    val outputPathMode: OutputPathMode = OutputPathMode.Relative,
+    /** [outputPathMode] が相対パスのときの、元画像のフォルダからのパス */
+    val relativeOutputPath: String = RelativeOutputPath.DEFAULT,
     val tools: ExternalTools? = null,
     val recentFolders: List<File> = emptyList(),
     val preview: PreviewState = EmptyPreview,
@@ -736,6 +775,9 @@ internal data class ImagePrepViewModelState(
     val removedFiles: Set<File> = setOf(),
     /** 画像ごとの切り抜き範囲。切り抜かない画像は含めない */
     val crops: Map<File, CropRect> = mapOf(),
+    val sortOrder: ImageSortOrder = ImageSortOrder(ImageSortKey.Name, ascending = true),
+    /** 並べ替えに使う日時。読み込み中の画像は含まれない */
+    val fileDates: Map<File, FileDates> = mapOf(),
 ) {
     class Removal(
         /** 削除した画像と、削除前の一覧での位置（昇順） */
@@ -747,11 +789,25 @@ internal data class ImagePrepViewModelState(
         val isSelectionMode: Boolean,
     )
 
-    val exportTargets: List<ImageItem>
-        get() = images.filter { it.file in effectiveSelection }
+    /** 画面に並べる順。フォルダの順は [images] のまま、フォルダ内を [sortOrder] で並べ替える */
+    val orderedImages: List<ImageItem>
+        get() = images.groupBy { it.file.folder }.values.flatMap { group -> group.sortedWith(sortOrder.comparator(fileDates)) }
 
-    val defaultOutputDir: File?
-        get() = images.firstOrNull()?.file?.folder?.let { File(it, "output") }
+    val exportTargets: List<ImageItem>
+        get() = orderedImages.filter { it.file in effectiveSelection }
+
+    /** 相対パスの基準。複数フォルダの画像があっても先頭の画像のフォルダにまとめる */
+    val sourceFolder: File?
+        get() = images.firstOrNull()?.file?.folder
+
+    val outputDir: File?
+        get() = when (outputPathMode) {
+            OutputPathMode.Absolute -> selectedOutputDir
+            OutputPathMode.Relative -> sourceFolder?.let { RelativeOutputPath.resolve(it, relativeOutputPath) }
+        }
+
+    val isRelativeOutputPathInvalid: Boolean
+        get() = outputPathMode == OutputPathMode.Relative && !RelativeOutputPath.isValid(relativeOutputPath)
 
     val effectiveSelection: Set<File>
         get() = selection.ifEmpty { setOfNotNull(focusedFile) }
@@ -763,8 +819,11 @@ internal data class ImagePrepViewModelState(
 
 internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listener): ImagePrepUiState {
     val targets = exportTargets
-    val outputDir = customOutputDir ?: defaultOutputDir
+    val outputDir = outputDir
     val notices = buildList {
+        if (isRelativeOutputPathInvalid) {
+            add(Notice("書き出し先の相対パスを入力してください（絶対パスは指定できません）。", blocking = true, action = null))
+        }
         if (invalidInputs.isNotEmpty()) {
             add(Notice("サイズは ${EditOptions.MIN_DIMENSION}〜${EditOptions.MAX_DIMENSION} px で入力してください。", blocking = true, action = null))
         }
@@ -792,22 +851,25 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
             add(Notice("出力先が元画像と同じフォルダです。元画像は上書きされず「(2)」付きの名前で保存されます。接尾辞の設定がおすすめです。", blocking = false, action = null))
         }
         val targetFolderCount = targets.map { it.file.folder }.distinct().size
-        if (outputDir != null && customOutputDir == null && targetFolderCount > 1) {
+        if (outputDir != null && outputPathMode == OutputPathMode.Relative && targetFolderCount > 1) {
             add(Notice("$targetFolderCount つのフォルダの画像を 1 つの出力先にまとめて書き出します。", blocking = false, action = null))
         }
     }
+    val orderedImages = orderedImages
     return ImagePrepUiState(
-        images = images,
+        images = orderedImages,
         isWorkspaceOpen = isWorkspaceOpen,
-        imageGroups = images.groupBy { it.file.folder }.map { (folder, items) -> ImageGroup(folder, items) },
+        imageGroups = orderedImages.groupBy { it.file.folder }.map { (folder, items) -> ImageGroup(folder, items) },
         exportCount = targets.size,
         isExportingSelection = isSelectionMode,
         focusedFile = focusedFile,
         selectedFiles = effectiveSelection,
+        sortOrder = sortOrder,
         pickerInitialDirectory = (focusedFile ?: images.lastOrNull()?.file)?.folder,
         options = options,
         outputDirectory = outputDir,
-        isCustomOutputDirectory = customOutputDir != null,
+        outputPathMode = outputPathMode,
+        relativeOutputPath = relativeOutputPath,
         tools = tools,
         recentFolders = recentFolders,
         preview = preview.copy(crop = preview.file?.let(crops::get)),
@@ -822,6 +884,19 @@ private val File.folder: File get() = absoluteFile.parentFile
 
 /** フォルダが最初に現れた順にまとめ、フォルダ内の並びは保つ */
 private fun List<ImageItem>.groupedByFolder(): List<ImageItem> = groupBy { it.file.folder }.values.flatten()
+
+private fun ImageSortOrder.comparator(fileDates: Map<File, FileDates>): Comparator<ImageItem> {
+    val byName = compareBy(NaturalOrder) { item: ImageItem -> item.file }.let { if (ascending) it else it.reversed() }
+    val dateOf: (FileDates) -> Long? = when (key) {
+        ImageSortKey.Name -> return byName
+        ImageSortKey.Captured -> FileDates::capturedAtMillis
+        ImageSortKey.Modified -> FileDates::modifiedAtMillis
+        ImageSortKey.Created -> FileDates::createdAtMillis
+    }
+    val dateOrder: Comparator<Long> = if (ascending) naturalOrder() else reverseOrder()
+    // 日時を読めない・まだ読んでいない画像は降順でも末尾に置く
+    return compareBy(nullsLast(dateOrder)) { item: ImageItem -> fileDates[item.file]?.let(dateOf) }.then(byName)
+}
 
 /** "IMG_2.jpg" が "IMG_10.jpg" より前に来る並び順 */
 internal object NaturalOrder : Comparator<File> {

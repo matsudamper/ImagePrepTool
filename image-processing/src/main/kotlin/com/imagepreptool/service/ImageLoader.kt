@@ -5,7 +5,6 @@ import java.awt.image.BufferedImage
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.IOException
-import java.nio.file.Files
 import javax.imageio.ImageIO
 import javax.imageio.ImageReader
 import kotlin.math.abs
@@ -48,7 +47,7 @@ object ImageLoader {
      */
     fun load(file: File, tools: ExternalTools, maxDimension: Int? = null, smoothDownscale: Boolean = false): LoadedImage {
         if (!file.isFile) throw ImageLoadException("ファイルが見つかりません")
-        if (isHeif(file)) return loadHeif(file, tools, maxDimension)
+        if (isHeif(file)) return loadHeif(file, tools, maxDimension, smoothDownscale)
 
         val orientation = ExifService.readOrientation(file)
         val (decoded, rawSize) = try {
@@ -102,31 +101,38 @@ object ImageLoader {
         return max(1, (longSide + decodeLimit - 1) / decodeLimit)
     }
 
-    private fun loadHeif(file: File, tools: ExternalTools, maxDimension: Int?): LoadedImage {
+    private fun loadHeif(file: File, tools: ExternalTools, maxDimension: Int?, smoothDownscale: Boolean): LoadedImage {
         val decoder = tools.heifDecoder
             ?: throw ImageLoadException("HEIC の読み込みには heif-dec または magick が必要です")
-        val temp = Files.createTempFile("imageprep-heif-", if (decoder == ExternalTool.Magick) ".png" else ".jpg").toFile().apply { deleteOnExit() }
-        try {
-            val command = when (decoder) {
-                ExternalTool.Magick -> listOf(decoder.command, file.absolutePath, temp.absolutePath)
-                else -> listOf(decoder.command, "-q", "95", file.absolutePath, temp.absolutePath)
-            }
-            val result = try {
-                ProcessRunner.run(command, timeoutSeconds = 120)
-            } catch (e: IOException) {
-                throw ImageLoadException("${decoder.command} を実行できません", e)
-            } catch (e: ExternalCommandException) {
-                throw ImageLoadException(e.message.orEmpty(), e)
-            }
-            if (result.exitCode != 0 || temp.length() == 0L) {
-                val reason = result.output.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: "終了コード ${result.exitCode}"
-                throw ImageLoadException("HEIC を変換できません（$reason）")
-            }
-            // デコーダ側で回転は適用済みなので EXIF の向きは使わない
-            val image = normalize(ImageIO.read(temp) ?: throw ImageLoadException("HEIC の変換結果を読み込めません"))
-            return LoadedImage(fitWithin(image, maxDimension), ImageSize(image.width, image.height))
-        } finally {
-            temp.delete()
+        val outputExtension = if (decoder == ExternalTool.Magick) ".png" else ".jpg"
+        val converted = HeifConversionCache.getOrConvert(file, decoder, outputExtension) { output ->
+            convertHeif(file, decoder, output)
+        }
+        // デコーダ側で回転は適用済みなので EXIF の向きは使わない
+        val (decoded, size) = try {
+            decode(converted, maxDimension, smoothDownscale)
+        } catch (e: Exception) {
+            throw ImageLoadException("HEIC の変換結果を読み込めません", e)
+        }
+        return LoadedImage(fitWithin(normalize(decoded), maxDimension), size)
+    }
+
+    private fun convertHeif(file: File, decoder: ExternalTool, output: File) {
+        val command = when (decoder) {
+            // PNG の圧縮は変換時間の大半を占めるうえ、一時ファイルなので最小限にする
+            ExternalTool.Magick -> listOf(decoder.command, file.absolutePath, "-define", "png:compression-level=1", output.absolutePath)
+            else -> listOf(decoder.command, "-q", "95", file.absolutePath, output.absolutePath)
+        }
+        val result = try {
+            ProcessRunner.run(command, timeoutSeconds = 120)
+        } catch (e: IOException) {
+            throw ImageLoadException("${decoder.command} を実行できません", e)
+        } catch (e: ExternalCommandException) {
+            throw ImageLoadException(e.message.orEmpty(), e)
+        }
+        if (result.exitCode != 0 || output.length() == 0L) {
+            val reason = result.output.lineSequence().firstOrNull { it.isNotBlank() }?.trim() ?: "終了コード ${result.exitCode}"
+            throw ImageLoadException("HEIC を変換できません（$reason）")
         }
     }
 

@@ -33,6 +33,8 @@ import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.onClick
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -67,7 +69,6 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.offset
@@ -75,9 +76,12 @@ import java.io.File
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.presentation.ImageGroup
 import com.imagepreptool.presentation.ImageItem
+import com.imagepreptool.presentation.ImageSortKey
+import com.imagepreptool.presentation.ImageSortOrder
 import com.imagepreptool.presentation.SelectMode
 import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_broken_image
+import com.imagepreptool.resources.ic_check
 import com.imagepreptool.resources.ic_close
 import com.imagepreptool.resources.ic_download
 import com.imagepreptool.resources.ic_folder
@@ -93,7 +97,10 @@ fun ImageListPanel(
     focusedFile: File?,
     selectedFiles: Set<File>,
     isSelectionMode: Boolean,
+    sortOrder: ImageSortOrder,
     tools: ExternalTools?,
+    onSelectSortKey: (ImageSortKey) -> Unit,
+    onToggleSortDirection: () -> Unit,
     onClickImage: (File, SelectMode) -> Unit,
     onRemoveSelection: () -> Unit,
     onUndoRemoval: () -> Unit,
@@ -141,17 +148,23 @@ fun ImageListPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text("画像", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                SortControl(
+                    sortOrder = sortOrder,
+                    onSelectKey = onSelectSortKey,
+                    onToggleDirection = onToggleSortDirection,
+                )
                 Text(
                     "$imageCount 枚",
                     style = MaterialTheme.typography.labelMedium.merge(MonoNumberStyle),
                     color = colors.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 4.dp),
                 )
             }
         }
 
         Box(Modifier.weight(1f)) {
             LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = ThumbnailMinSize),
+                columns = GridCells.Fixed(ImageColumnCount),
                 state = gridState,
                 contentPadding = PaddingValues(start = GridHorizontalPadding, end = GridHorizontalPadding, bottom = 16.dp),
                 horizontalArrangement = Arrangement.spacedBy(GridColumnSpacing),
@@ -169,7 +182,6 @@ fun ImageListPanel(
                     .focusRequester(focusRequester)
                     .onPreviewKeyEvent { event ->
                         if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                        val columns = density.adaptiveColumnCount(gridState.layoutInfo.viewportSize.width)
                         val visibleGroups = imageGroups.filter { it.folder !in collapsedFolders }
                         val visibleFocusedFile = focusedFile?.takeIf { file -> visibleGroups.any { group -> group.images.any { it.file == file } } }
                         val moveFocusInVisible = { visibleDelta: Int ->
@@ -180,8 +192,8 @@ fun ImageListPanel(
                         when (event.key) {
                             Key.DirectionLeft -> moveFocusInVisible(-1)
                             Key.DirectionRight -> moveFocusInVisible(1)
-                            Key.DirectionUp -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = false))
-                            Key.DirectionDown -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = true))
+                            Key.DirectionUp -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, ImageColumnCount, downward = false))
+                            Key.DirectionDown -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, ImageColumnCount, downward = true))
                             Key.Delete -> if (isSelectionMode) onRemoveSelection() else visibleFocusedFile?.let(onRemove)
                             Key.Escape -> onClearSelection()
                             Key.A -> if (event.isCtrlPressed || event.isMetaPressed) onSelectAll() else return@onPreviewKeyEvent false
@@ -297,13 +309,6 @@ internal fun verticalMoveDelta(imageGroups: List<ImageGroup>, focusedFile: File?
     return target - (groupStart + indexInGroup)
 }
 
-/** GridCells.Adaptive と同じ計算でグリッドの列数を求める。見えている行が短い位置までスクロールしていても正しい列数になる */
-private fun Density.adaptiveColumnCount(viewportWidthPx: Int): Int {
-    val gridWidth = viewportWidthPx - (GridHorizontalPadding * 2).roundToPx()
-    val spacing = GridColumnSpacing.roundToPx()
-    return ((gridWidth + spacing) / (ThumbnailMinSize.roundToPx() + spacing)).coerceAtLeast(1)
-}
-
 /** 親の contentPadding を越えて左右いっぱいまで広げる */
 private fun Modifier.extendHorizontally(extension: Dp): Modifier = layout { measurable, constraints ->
     val extensionPx = extension.roundToPx()
@@ -314,7 +319,7 @@ private fun Modifier.extendHorizontally(extension: Dp): Modifier = layout { meas
 }
 
 private val FolderHeaderHeight = 44.dp
-private val ThumbnailMinSize = 84.dp
+private const val ImageColumnCount = 3
 private val GridHorizontalPadding = 12.dp
 private val GridColumnSpacing = 8.dp
 
@@ -374,6 +379,42 @@ private fun FolderHeader(group: ImageGroup, expanded: Boolean, onToggleExpand: (
                 IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
                     Icon(painterResource(Res.drawable.ic_close), "このフォルダを一覧から除外", modifier = Modifier.size(18.dp))
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SortControl(sortOrder: ImageSortOrder, onSelectKey: (ImageSortKey) -> Unit, onToggleDirection: () -> Unit) {
+    var menuExpanded by remember { mutableStateOf(false) }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box {
+            Tooltip("並べ替え") {
+                TextButton(onClick = { menuExpanded = true }, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(30.dp)) {
+                    Text("${sortOrder.key.label} ▾", style = MaterialTheme.typography.labelLarge)
+                }
+            }
+            DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+                ImageSortKey.entries.forEach { key ->
+                    DropdownMenuItem(
+                        text = { Text(key.label, style = MaterialTheme.typography.bodyMedium) },
+                        trailingIcon = if (key == sortOrder.key) {
+                            { Icon(painterResource(Res.drawable.ic_check), null, modifier = Modifier.size(18.dp)) }
+                        } else {
+                            null
+                        },
+                        onClick = {
+                            menuExpanded = false
+                            onSelectKey(key)
+                        },
+                    )
+                }
+            }
+        }
+        val directionLabel = if (sortOrder.ascending) "昇順" else "降順"
+        Tooltip("$directionLabel（クリックで切り替え）") {
+            TextButton(onClick = onToggleDirection, contentPadding = PaddingValues(horizontal = 8.dp), modifier = Modifier.height(30.dp)) {
+                Text(if (sortOrder.ascending) "↑ 昇順" else "↓ 降順", style = MaterialTheme.typography.labelLarge)
             }
         }
     }
@@ -495,7 +536,10 @@ private fun ImageListPanelPreview() {
             focusedFile = imageGroups.first().images.first().file,
             selectedFiles = setOf(imageGroups.first().images.first().file),
             isSelectionMode = false,
+            sortOrder = ImageSortOrder(ImageSortKey.Name, ascending = true),
             tools = null,
+            onSelectSortKey = {},
+            onToggleSortDirection = {},
             onClickImage = { _, _ -> },
             onRemoveSelection = {},
             onUndoRemoval = {},

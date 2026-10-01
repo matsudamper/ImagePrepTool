@@ -53,6 +53,11 @@ enum class CaptionStyle(val label: String) {
     Plain("影なし"),
 }
 
+enum class OutputPathMode(val label: String) {
+    Absolute("絶対パス"),
+    Relative("相対パス"),
+}
+
 enum class ConflictPolicy(val label: String) {
     Rename("別名で保存"),
     Overwrite("上書き"),
@@ -144,3 +149,11 @@ data class CropRect(val left: Float, val top: Float, val right: Float, val botto
         val Full = CropRect(0f, 0f, 1f, 1f)
     }
 }
+
+/** 一覧の並べ替えに使う日時（エポックミリ秒）。取得できないものは null */
+data class FileDates(
+    /** EXIF の撮影日時。タイムゾーンを持たないため UTC として読んだ値で、ファイルの日時とは比べられない */
+    val capturedAtMillis: Long?,
+    val modifiedAtMillis: Long?,
+    val createdAtMillis: Long?,
+)
