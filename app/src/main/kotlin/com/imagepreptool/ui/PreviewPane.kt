@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,7 +30,6 @@ import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -78,7 +76,7 @@ import com.imagepreptool.resources.ic_broken_image
 import com.imagepreptool.resources.ic_chevron_left
 import com.imagepreptool.resources.ic_chevron_right
 import com.imagepreptool.ui.components.Pill
-import com.imagepreptool.ui.components.Tooltip
+import com.imagepreptool.ui.components.SlantedToggle
 import com.imagepreptool.ui.theme.AppTheme
 import com.imagepreptool.ui.theme.MonoNumberStyle
 import org.jetbrains.compose.resources.painterResource
@@ -154,9 +152,12 @@ private fun PreviewPaneContent(
                 } else {
                     Spacer(Modifier.weight(1f))
                 }
-                PreviewModeToggleButton(
-                    mode = mode,
+                SlantedToggle(
+                    firstLabel = PreviewMode.Processed.label,
+                    secondLabel = PreviewMode.Original.label,
+                    isSecondSelected = mode == PreviewMode.Original,
                     onToggle = { mode = mode.toggled },
+                    modifier = Modifier.width(188.dp),
                 )
             }
         }
@@ -321,20 +322,6 @@ private fun Modifier.previewZoomGestures(zoom: PreviewZoomState): Modifier = thi
     .pointerInput(zoom) {
         detectTapGestures(onDoubleTap = { zoom.reset() })
     }
-
-@Composable
-private fun PreviewModeToggleButton(mode: PreviewMode, onToggle: () -> Unit, modifier: Modifier = Modifier) {
-    Tooltip(text = "クリックで「${mode.toggled.label}」に切り替え", modifier = modifier) {
-        // ラベルの長さで幅が変わると、連打したときにボタンがずれて押し損じるため幅を固定する
-        OutlinedButton(
-            onClick = onToggle,
-            contentPadding = PaddingValues(horizontal = 12.dp),
-            modifier = Modifier.width(112.dp).height(34.dp),
-        ) {
-            Text(mode.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
-        }
-    }
-}
 
 @Composable
 private fun ZoomResetButton(zoom: PreviewZoomState, modifier: Modifier = Modifier) {
