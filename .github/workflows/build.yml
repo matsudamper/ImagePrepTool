@@ -51,7 +51,7 @@ jobs:
   package-windows-exe:
     runs-on: windows-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
     outputs:
       artifact_name: ${{ steps.name.outputs.artifact_name }}
@@ -117,6 +117,23 @@ jobs:
         continue-on-error: true
         with:
           file_path: ${{ env.INSTALLER_EXE_PATH }}
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # packageVersion と同じ値にして PR と同じバージョン系列にする
+          TAG: v0.1.${{ github.run_number }}
+        run: |
+          if gh release view "${TAG}" > /dev/null 2>&1; then
+            echo "${TAG} は作成済みのためスキップします"
+            exit 0
+          fi
+          gh release create "${TAG}" "${INSTALLER_EXE_PATH}" \
+            --target "${GITHUB_SHA}" \
+            --title "${TAG}" \
+            --generate-notes
 
   report-artifacts:
     runs-on: ubuntu-latest
