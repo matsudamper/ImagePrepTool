@@ -482,11 +482,6 @@ private fun OutputSection(
                 }
             }
         }
-        if (pathMode == OutputPathMode.Relative) {
-            Hint("元画像のフォルダからの相対パスに保存します（例: ../export）。")
-        } else {
-            Hint("選択したフォルダに保存します。選択は保存されないため、起動のたびに選び直してください。")
-        }
         Column {
             FieldLabel("ファイル名の末尾に追加")
             Spacer(Modifier.height(6.dp))
