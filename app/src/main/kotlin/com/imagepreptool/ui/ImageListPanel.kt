@@ -9,6 +9,9 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -30,7 +33,6 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.foundation.onClick
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -43,6 +45,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -58,8 +61,10 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerKeyboardModifiers
 import androidx.compose.ui.input.pointer.isCtrlPressed
 import androidx.compose.ui.input.pointer.isMetaPressed
+import androidx.compose.ui.input.pointer.isPrimaryPressed
 import androidx.compose.ui.input.pointer.isShiftPressed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
@@ -411,7 +416,6 @@ private fun SelectionBar(count: Int, onRemove: () -> Unit, onClear: () -> Unit) 
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Thumbnail(
     item: ImageItem,
@@ -425,13 +429,21 @@ private fun Thumbnail(
     val hovered by interaction.collectIsHoveredAsState()
     val thumbnail by rememberThumbnail(item.file, tools)
     val shape = RoundedCornerShape(10.dp)
+    val currentOnClick by rememberUpdatedState(onClick)
 
     Column(
         modifier = Modifier
             .hoverable(interaction)
-            .onClick(keyboardModifiers = { isShiftPressed }) { onClick(SelectMode.Range) }
-            .onClick(keyboardModifiers = { isCtrlPressed || isMetaPressed }) { onClick(SelectMode.Toggle) }
-            .onClick(keyboardModifiers = { !isShiftPressed && !isCtrlPressed && !isMetaPressed }) { onClick(SelectMode.Single) },
+            .pointerInput(Unit) {
+                // onClick を修飾キー別にチェーンすると Shift クリックが拾われないため、押下時の修飾キーで判定する
+                awaitEachGesture {
+                    awaitFirstDown()
+                    val pressEvent = currentEvent
+                    if (!pressEvent.buttons.isPrimaryPressed) return@awaitEachGesture
+                    val mode = selectModeOf(pressEvent.keyboardModifiers)
+                    if (waitForUpOrCancellation() != null) currentOnClick(mode)
+                }
+            },
     ) {
         Box(
             modifier = Modifier
@@ -509,4 +521,10 @@ private fun ImageListPanelPreview() {
             modifier = Modifier.width(312.dp).height(640.dp),
         )
     }
+}
+
+private fun selectModeOf(modifiers: PointerKeyboardModifiers): SelectMode = when {
+    modifiers.isShiftPressed -> SelectMode.Range
+    modifiers.isCtrlPressed || modifiers.isMetaPressed -> SelectMode.Toggle
+    else -> SelectMode.Single
 }
