@@ -47,7 +47,7 @@ object ExifService {
         put(CaptionField.Shutter, sub?.doubleOrNull(ExifSubIFDDirectory.TAG_EXPOSURE_TIME)?.let(::formatExposure))
         put(CaptionField.Iso, sub?.intOrNull(ExifSubIFDDirectory.TAG_ISO_EQUIVALENT)?.takeIf { it > 0 }?.let { "ISO $it" })
         put(CaptionField.ExposureBias, sub?.exposureBias()?.let(::formatExposureBias))
-        val taken = sub?.dateOrNull(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL) ?: ifd0?.dateOrNull(ExifIFD0Directory.TAG_DATETIME)
+        val taken = metadata.capturedAt()
         put(CaptionField.Date, taken?.let { format("yyyy/MM/dd", it) })
         put(CaptionField.DateTime, taken?.let { format("yyyy/MM/dd HH:mm", it) })
         put(CaptionField.Artist, ifd0?.string(ExifIFD0Directory.TAG_ARTIST))
@@ -62,6 +62,9 @@ object ExifService {
         val makeHead = make.substringBefore(' ')
         return if (model.startsWith(makeHead, ignoreCase = true)) model else "$makeHead $model"
     }
+
+    /** 撮影日時。EXIF に無ければ null */
+    fun readCapturedAt(file: File): Date? = readMetadata(file)?.capturedAt()
 
     /** EXIF Orientation（1〜8）。無ければ 1 */
     fun readOrientation(file: File): Int {
@@ -91,6 +94,10 @@ object ExifService {
 
     private fun readMetadata(file: File): Metadata? =
         runCatching { ImageMetadataReader.readMetadata(file) }.getOrNull()
+
+    private fun Metadata.capturedAt(): Date? =
+        getFirstDirectoryOfType(ExifSubIFDDirectory::class.java)?.dateOrNull(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL)
+            ?: getFirstDirectoryOfType(ExifIFD0Directory::class.java)?.dateOrNull(ExifIFD0Directory.TAG_DATETIME)
 
     private fun Metadata.orientation(): Int =
         getDirectoriesOfType(ExifIFD0Directory::class.java)

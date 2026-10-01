@@ -6,10 +6,14 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.draganddrop.dragAndDropTarget
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -44,7 +48,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draganddrop.DragAndDropEvent
 import androidx.compose.ui.draganddrop.DragAndDropTarget
 import androidx.compose.ui.draganddrop.awtTransferable
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import java.awt.Cursor
 import java.awt.Window
 import java.awt.datatransfer.DataFlavor
 import java.io.File
@@ -233,6 +242,7 @@ private fun Workspace(
 ) {
     val colors = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
+    var imageListWidth by remember { mutableStateOf(312.dp) }
     Column(modifier.fillMaxSize()) {
         TopBar(actions, onGoHome)
         Row(Modifier.weight(1f).fillMaxWidth()) {
@@ -241,7 +251,10 @@ private fun Workspace(
                 focusedFile = uiState.focusedFile,
                 selectedFiles = uiState.selectedFiles,
                 isSelectionMode = uiState.isExportingSelection,
+                sortOrder = uiState.sortOrder,
                 tools = uiState.tools,
+                onSelectSortKey = uiState.listener::selectSortKey,
+                onToggleSortDirection = uiState.listener::toggleSortDirection,
                 onClickImage = uiState.listener::clickImage,
                 onRemoveSelection = uiState.listener::removeSelection,
                 onUndoRemoval = uiState.listener::undoRemoval,
@@ -253,9 +266,11 @@ private fun Workspace(
                 onReveal = { file -> DesktopDialogs.revealFile(file)?.let(actions.showMessage) },
                 onOpenFolder = { folder -> DesktopDialogs.openFolder(folder)?.let(actions.showMessage) },
                 onRemoveFolder = uiState.listener::removeFolder,
-                modifier = Modifier.width(312.dp),
+                modifier = Modifier.width(imageListWidth),
             )
-            VerticalDivider(color = colors.outlineVariant)
+            PanelResizeHandle(
+                onDrag = { delta -> imageListWidth = (imageListWidth + delta).coerceIn(ImageListMinWidth, ImageListMaxWidth) },
+            )
             val index = uiState.images.indexOfFirst { it.file == uiState.focusedFile }
             PreviewPane(
                 preview = uiState.preview,
@@ -274,7 +289,8 @@ private fun Workspace(
                 hasFocusedImage = uiState.focusedFile != null && uiState.preview.original != null,
                 sampleFile = uiState.focusedFile ?: uiState.images.firstOrNull()?.file,
                 outputDirectory = uiState.outputDirectory,
-                isCustomOutputDirectory = uiState.isCustomOutputDirectory,
+                outputPathMode = uiState.outputPathMode,
+                relativeOutputPath = uiState.relativeOutputPath,
                 notices = uiState.notices,
                 exportCount = uiState.exportCount,
                 canExport = uiState.canExport,
@@ -286,7 +302,8 @@ private fun Workspace(
                             ?.let(uiState.listener::chooseOutputDirectory)
                     }
                 },
-                onResetOutput = uiState.listener::resetOutputDirectory,
+                onOutputPathModeChange = uiState.listener::setOutputPathMode,
+                onRelativeOutputPathChange = uiState.listener::setRelativeOutputPath,
                 onNoticeAction = { action ->
                     when (action) {
                         NoticeAction.RemoveUnreadable -> uiState.listener.removeUnreadable()
@@ -298,6 +315,30 @@ private fun Workspace(
         }
     }
 }
+
+/** 左右のパネル境界。ドラッグで左側パネルの幅を変える */
+@Composable
+private fun PanelResizeHandle(onDrag: (Dp) -> Unit, modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    val density = LocalDensity.current
+    Box(
+        modifier = modifier
+            .fillMaxHeight()
+            .width(PanelResizeHandleWidth)
+            .pointerHoverIcon(PointerIcon(Cursor(Cursor.E_RESIZE_CURSOR)))
+            .draggable(
+                orientation = Orientation.Horizontal,
+                state = rememberDraggableState { deltaPx -> onDrag(with(density) { deltaPx.toDp() }) },
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        VerticalDivider(color = colors.outlineVariant)
+    }
+}
+
+private val ImageListMinWidth = 240.dp
+private val ImageListMaxWidth = 720.dp
+private val PanelResizeHandleWidth = 6.dp
 
 @Composable
 private fun TopBar(

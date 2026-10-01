@@ -10,10 +10,23 @@ import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.OutputPathMode
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.service.PlannedOutput
 
 enum class SelectMode { Single, Toggle, Range }
+
+enum class ImageSortKey(val label: String) {
+    Name("ファイル名"),
+    Captured("撮影日"),
+    Modified("更新日"),
+    Created("作成日"),
+}
+
+data class ImageSortOrder(
+    val key: ImageSortKey,
+    val ascending: Boolean,
+)
 
 data class ImageItem(
     val file: File,
@@ -97,11 +110,14 @@ data class ImagePrepUiState(
     val isExportingSelection: Boolean,
     val focusedFile: File?,
     val selectedFiles: Set<File>,
+    /** 一覧のフォルダ内の並び順 */
+    val sortOrder: ImageSortOrder,
     /** 画像を開くダイアログで最初に表示するフォルダ */
     val pickerInitialDirectory: File?,
     val options: EditOptions,
     val outputDirectory: File?,
-    val isCustomOutputDirectory: Boolean,
+    val outputPathMode: OutputPathMode,
+    val relativeOutputPath: String,
     val tools: ExternalTools?,
     val recentFolders: List<File>,
     val preview: PreviewState,
@@ -110,7 +126,7 @@ data class ImagePrepUiState(
     val isLoading: Boolean,
     val listener: Listener,
 ) {
-    val canExport: Boolean get() = exportCount > 0 && notices.none { it.blocking } && export == ExportState.Idle && !isLoading
+    val canExport: Boolean get() = exportCount > 0 && outputDirectory != null && notices.none { it.blocking } && export == ExportState.Idle && !isLoading
     val missingToolCount: Int
         get() = tools?.let { t ->
             listOf(t.canWriteWebp, t.heifDecoder != null).count { !it }
@@ -128,6 +144,8 @@ data class ImagePrepUiState(
         fun clearSelection()
         fun moveFocus(delta: Int)
         fun extendSelection(delta: Int)
+        fun selectSortKey(key: ImageSortKey)
+        fun toggleSortDirection()
         fun removeImage(file: File)
         fun removeSelection()
         fun removeFolder(folder: File)
@@ -137,7 +155,8 @@ data class ImagePrepUiState(
         fun setInputValid(field: String, valid: Boolean)
         fun setCrop(file: File, crop: CropRect?)
         fun chooseOutputDirectory(dir: File)
-        fun resetOutputDirectory()
+        fun setOutputPathMode(mode: OutputPathMode)
+        fun setRelativeOutputPath(path: String)
         fun requestExport()
         fun resolveConflicts(policy: ConflictPolicy?)
         fun cancelExport()
