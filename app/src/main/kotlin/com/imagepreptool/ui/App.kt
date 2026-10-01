@@ -146,7 +146,7 @@ fun App(
                 .fillMaxSize()
                 .dragAndDropTarget(shouldStartDragAndDrop = { true }, target = dropTarget),
         ) {
-            if (!uiState.hasImages) {
+            if (!uiState.isWorkspaceOpen) {
                 EmptyState(
                     recentFolders = uiState.recentFolders,
                     isLoading = uiState.isLoading,

@@ -206,18 +206,19 @@ private fun PreviewPaneContent(
                 Row(
                     modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (mode == PreviewMode.Processed && bitmap != null) {
-                        CropButton(isCropped = preview.crop != null, onClick = { isCropEditing = true })
-                    }
                     ZoomResetButton(zoom = zoom)
+                    LoadingBadge(visible = preview.loading && bitmap != null)
+                }
+                if (mode == PreviewMode.Processed && bitmap != null) {
+                    CropButton(
+                        isCropped = preview.crop != null,
+                        onClick = { isCropEditing = true },
+                        modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
+                    )
                 }
             }
-
-            LoadingBadge(
-                visible = preview.loading && bitmap != null && !isCropping,
-                modifier = Modifier.align(Alignment.TopEnd).padding(14.dp),
-            )
 
             if (total > 1) {
                 NavButton(
@@ -355,9 +356,10 @@ private fun Modifier.previewZoomGestures(zoom: PreviewZoomState): Modifier = thi
     }
 
 @Composable
-private fun CropButton(isCropped: Boolean, onClick: () -> Unit) {
+private fun CropButton(isCropped: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     FilledTonalButton(
         onClick = onClick,
+        modifier = modifier,
         contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
         colors = ButtonDefaults.filledTonalButtonColors(
             containerColor = if (isCropped) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),

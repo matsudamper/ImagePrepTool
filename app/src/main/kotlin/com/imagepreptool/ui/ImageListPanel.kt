@@ -84,6 +84,7 @@ import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_broken_image
 import com.imagepreptool.resources.ic_check
 import com.imagepreptool.resources.ic_close
+import com.imagepreptool.resources.ic_download
 import com.imagepreptool.resources.ic_folder
 import com.imagepreptool.ui.components.Tooltip
 import com.imagepreptool.ui.theme.AppTheme
@@ -162,87 +163,102 @@ fun ImageListPanel(
             }
         }
 
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(minSize = ThumbnailMinSize),
-            state = gridState,
-            contentPadding = PaddingValues(start = GridHorizontalPadding, end = GridHorizontalPadding, bottom = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(GridColumnSpacing),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier
-                .weight(1f)
-                .pointerInput(Unit) {
-                    awaitPointerEventScope {
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            if (event.type == PointerEventType.Press) focusRequester.requestFocus()
+        Box(Modifier.weight(1f)) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = ThumbnailMinSize),
+                state = gridState,
+                contentPadding = PaddingValues(start = GridHorizontalPadding, end = GridHorizontalPadding, bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(GridColumnSpacing),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                if (event.type == PointerEventType.Press) focusRequester.requestFocus()
+                            }
                         }
                     }
-                }
-                .focusRequester(focusRequester)
-                .onPreviewKeyEvent { event ->
-                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
-                    val columns = density.adaptiveColumnCount(gridState.layoutInfo.viewportSize.width)
-                    val visibleGroups = imageGroups.filter { it.folder !in collapsedFolders }
-                    val visibleFocusedFile = focusedFile?.takeIf { file -> visibleGroups.any { group -> group.images.any { it.file == file } } }
-                    val moveFocusInVisible = { visibleDelta: Int ->
-                        if (visibleFocusedFile != null) {
-                            onMoveFocus(focusDeltaInAllImages(imageGroups, visibleGroups, visibleFocusedFile, visibleDelta))
+                    .focusRequester(focusRequester)
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        val columns = density.adaptiveColumnCount(gridState.layoutInfo.viewportSize.width)
+                        val visibleGroups = imageGroups.filter { it.folder !in collapsedFolders }
+                        val visibleFocusedFile = focusedFile?.takeIf { file -> visibleGroups.any { group -> group.images.any { it.file == file } } }
+                        val moveFocusInVisible = { visibleDelta: Int ->
+                            if (visibleFocusedFile != null) {
+                                onMoveFocus(focusDeltaInAllImages(imageGroups, visibleGroups, visibleFocusedFile, visibleDelta))
+                            }
                         }
+                        when (event.key) {
+                            Key.DirectionLeft -> moveFocusInVisible(-1)
+                            Key.DirectionRight -> moveFocusInVisible(1)
+                            Key.DirectionUp -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = false))
+                            Key.DirectionDown -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = true))
+                            Key.Delete -> if (isSelectionMode) onRemoveSelection() else visibleFocusedFile?.let(onRemove)
+                            Key.Escape -> onClearSelection()
+                            Key.A -> if (event.isCtrlPressed || event.isMetaPressed) onSelectAll() else return@onPreviewKeyEvent false
+                            Key.Z -> if (event.isCtrlPressed || event.isMetaPressed) onUndoRemoval() else return@onPreviewKeyEvent false
+                            else -> return@onPreviewKeyEvent false
+                        }
+                        true
                     }
-                    when (event.key) {
-                        Key.DirectionLeft -> moveFocusInVisible(-1)
-                        Key.DirectionRight -> moveFocusInVisible(1)
-                        Key.DirectionUp -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = false))
-                        Key.DirectionDown -> moveFocusInVisible(verticalMoveDelta(visibleGroups, visibleFocusedFile, columns, downward = true))
-                        Key.Delete -> if (isSelectionMode) onRemoveSelection() else visibleFocusedFile?.let(onRemove)
-                        Key.Escape -> onClearSelection()
-                        Key.A -> if (event.isCtrlPressed || event.isMetaPressed) onSelectAll() else return@onPreviewKeyEvent false
-                        Key.Z -> if (event.isCtrlPressed || event.isMetaPressed) onUndoRemoval() else return@onPreviewKeyEvent false
-                        else -> return@onPreviewKeyEvent false
-                    }
-                    true
-                }
-                .focusable(),
-        ) {
-            imageGroups.forEach { group ->
-                val expanded = group.folder !in collapsedFolders
-                stickyHeader(key = "folder:${group.folder.absolutePath}", contentType = "folder") {
-                    FolderHeader(
-                        group = group,
-                        expanded = expanded,
-                        onToggleExpand = {
-                            collapsedFolders = if (expanded) collapsedFolders + group.folder else collapsedFolders - group.folder
-                        },
-                        onOpen = { onOpenFolder(group.folder) },
-                        onRemove = { onRemoveFolder(group.folder) },
-                    )
-                }
-                items(if (expanded) group.images else listOf(), key = { it.file.absolutePath }, contentType = { "image" }) { item ->
-                    // 複数選択中の画像に対する操作は選択中の全画像に反映される
-                    val inGroup = isSelectionMode && item.file in selectedFiles
-                    val prefix = if (inGroup) "選択中の ${selectedFiles.size} 枚を" else ""
-                    ContextMenuArea(
-                        items = {
-                            listOf(
-                                ContextMenuItem("エクスプローラーで表示") { onReveal(item.file) },
-                                ContextMenuItem(prefix + "一覧から削除") { onRemove(item.file) },
-                            )
-                        },
-                    ) {
-                        Thumbnail(
-                            item = item,
-                            focused = item.file == focusedFile,
-                            selected = inGroup,
-                            tools = tools,
-                            onClick = { mode ->
-                                focusRequester.requestFocus()
-                                onClickImage(item.file, mode)
+                    .focusable(),
+            ) {
+                imageGroups.forEach { group ->
+                    val expanded = group.folder !in collapsedFolders
+                    stickyHeader(key = "folder:${group.folder.absolutePath}", contentType = "folder") {
+                        FolderHeader(
+                            group = group,
+                            expanded = expanded,
+                            onToggleExpand = {
+                                collapsedFolders = if (expanded) collapsedFolders + group.folder else collapsedFolders - group.folder
                             },
+                            onOpen = { onOpenFolder(group.folder) },
+                            onRemove = { onRemoveFolder(group.folder) },
                         )
+                    }
+                    items(if (expanded) group.images else listOf(), key = { it.file.absolutePath }, contentType = { "image" }) { item ->
+                        // 複数選択中の画像に対する操作は選択中の全画像に反映される
+                        val inGroup = isSelectionMode && item.file in selectedFiles
+                        val prefix = if (inGroup) "選択中の ${selectedFiles.size} 枚を" else ""
+                        ContextMenuArea(
+                            items = {
+                                listOf(
+                                    ContextMenuItem("エクスプローラーで表示") { onReveal(item.file) },
+                                    ContextMenuItem(prefix + "一覧から削除") { onRemove(item.file) },
+                                )
+                            },
+                        ) {
+                            Thumbnail(
+                                item = item,
+                                focused = item.file == focusedFile,
+                                selected = inGroup,
+                                tools = tools,
+                                onClick = { mode ->
+                                    focusRequester.requestFocus()
+                                    onClickImage(item.file, mode)
+                                },
+                            )
+                        }
                     }
                 }
             }
+            if (imageCount == 0) {
+                EmptyListHint(Modifier.align(Alignment.Center).padding(24.dp))
+            }
         }
+    }
+}
+
+@Composable
+private fun EmptyListHint(modifier: Modifier = Modifier) {
+    val colors = MaterialTheme.colorScheme
+    Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(painterResource(Res.drawable.ic_download), null, tint = colors.onSurfaceVariant, modifier = Modifier.size(40.dp))
+        Spacer(Modifier.height(8.dp))
+        Text("画像をドラッグ＆ドロップして追加", style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant)
     }
 }
 
