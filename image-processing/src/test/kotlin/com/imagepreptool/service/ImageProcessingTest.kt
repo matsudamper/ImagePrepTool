@@ -21,6 +21,7 @@ import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.model.ResizeMode
+import com.imagepreptool.model.Rotation
 
 class ImageProcessingTest {
 
@@ -284,6 +285,50 @@ class ImageProcessingTest {
         val written = ImageIO.read(item.target)
         // 64x48 の左半分（32x48）を長辺 16 に縮小する
         assertEquals(ImageSize(11, 16), ImageSize(written.width, written.height))
+    }
+
+    @Test
+    fun rotationMovesPixelsClockwise() {
+        // 2x1: 左が赤、右が青
+        val image = BufferedImage(2, 1, BufferedImage.TYPE_INT_RGB)
+        image.setRGB(0, 0, 0xFF0000)
+        image.setRGB(1, 0, 0x0000FF)
+        val clockwise = Rotator.rotate(image, Rotation.Clockwise90)
+        assertEquals(ImageSize(1, 2), ImageSize(clockwise.width, clockwise.height))
+        assertEquals(0xFF0000, clockwise.getRGB(0, 0) and 0xFFFFFF)
+        val counterClockwise = Rotator.rotate(image, Rotation.Clockwise270)
+        assertEquals(0x0000FF, counterClockwise.getRGB(0, 0) and 0xFFFFFF)
+        val upsideDown = Rotator.rotate(image, Rotation.Clockwise180)
+        assertEquals(0x0000FF, upsideDown.getRGB(0, 0) and 0xFFFFFF)
+        assertEquals(ImageSize(1, 2), Rotator.rotatedSize(ImageSize(2, 1), Rotation.Clockwise270))
+        assertEquals(Rotation.Clockwise270, Rotation.None.rotatedCounterClockwise())
+        assertEquals(Rotation.None, Rotation.Clockwise270.rotatedClockwise())
+    }
+
+    @Test
+    fun rotatedCropPointsToSameArea() {
+        // 200x100 の右上 (150, 25) にある点を含む範囲
+        val image = BufferedImage(200, 100, BufferedImage.TYPE_INT_RGB)
+        image.setRGB(150, 25, 0x00FF00)
+        val crop = CropRect(0.5f, 0f, 1f, 0.5f)
+        val rotated = Rotator.rotate(image, Rotation.Clockwise90)
+        val cropped = Cropper.crop(rotated, crop.rotatedClockwise())
+        assertEquals(ImageSize(50, 100), ImageSize(cropped.width, cropped.height))
+        assertEquals(0x00FF00, cropped.getRGB(24, 50) and 0xFFFFFF)
+        assertEquals(crop, crop.rotatedClockwise().rotatedCounterClockwise())
+    }
+
+    @Test
+    fun exportAppliesRotationBeforeCrop() {
+        val src = writeImage("rotate.png")
+        val options = EditOptions(resizeMode = ResizeMode.None, outputFormat = OutputFormat.Png, captionEnabled = false)
+        val item = OutputPlanner.plan(listOf(src), File(dir, "out"), options).single()
+            .copy(rotation = Rotation.Clockwise90, crop = CropRect(0f, 0f, 1f, 0.5f))
+        val result = ImageProcessor(ExternalTools.None).export(item, options)
+        assertEquals(ProcessResult.Status.Success, result.status, result.message)
+        val written = ImageIO.read(item.target)
+        // 64x48 を回すと 48x64 になり、その上半分を切り抜く
+        assertEquals(ImageSize(48, 32), ImageSize(written.width, written.height))
     }
 
     @Test

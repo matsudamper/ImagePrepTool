@@ -78,10 +78,13 @@ import com.imagepreptool.resources.ic_broken_image
 import com.imagepreptool.resources.ic_chevron_left
 import com.imagepreptool.resources.ic_chevron_right
 import com.imagepreptool.resources.ic_crop
+import com.imagepreptool.resources.ic_rotate_left
+import com.imagepreptool.resources.ic_rotate_right
 import com.imagepreptool.ui.components.Pill
 import com.imagepreptool.ui.components.SlantedToggle
 import com.imagepreptool.ui.theme.AppTheme
 import com.imagepreptool.ui.theme.MonoNumberStyle
+import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
 private enum class PreviewMode(val label: String) {
@@ -101,6 +104,8 @@ fun PreviewPane(
     options: EditOptions,
     onMove: (Int) -> Unit,
     onCropChange: (File, CropRect?) -> Unit,
+    onRotateClockwise: (File) -> Unit,
+    onRotateCounterClockwise: (File) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val zoom = remember(preview.file) { PreviewZoomState(initialScale = PreviewZoomState.MIN_SCALE, initialOffset = Offset.Zero) }
@@ -113,6 +118,8 @@ fun PreviewPane(
         zoom = zoom,
         onMove = onMove,
         onCropChange = { crop -> preview.file?.let { onCropChange(it, crop) } },
+        onRotateClockwise = { preview.file?.let(onRotateClockwise) },
+        onRotateCounterClockwise = { preview.file?.let(onRotateCounterClockwise) },
         modifier = modifier,
     )
 }
@@ -127,6 +134,8 @@ private fun PreviewPaneContent(
     zoom: PreviewZoomState,
     onMove: (Int) -> Unit,
     onCropChange: (CropRect?) -> Unit,
+    onRotateClockwise: () -> Unit,
+    onRotateCounterClockwise: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ext = AppTheme.extended
@@ -212,11 +221,26 @@ private fun PreviewPaneContent(
                     LoadingBadge(visible = preview.loading && bitmap != null)
                 }
                 if (mode == PreviewMode.Processed && bitmap != null) {
-                    CropButton(
-                        isCropped = preview.crop != null,
-                        onClick = { isCropEditing = true },
+                    Row(
                         modifier = Modifier.align(Alignment.TopEnd).padding(10.dp),
-                    )
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RotateButton(
+                            iconResource = Res.drawable.ic_rotate_left,
+                            contentDescription = "左に回転",
+                            onClick = onRotateCounterClockwise,
+                        )
+                        RotateButton(
+                            iconResource = Res.drawable.ic_rotate_right,
+                            contentDescription = "右に回転",
+                            onClick = onRotateClockwise,
+                        )
+                        CropButton(
+                            isCropped = preview.crop != null,
+                            onClick = { isCropEditing = true },
+                        )
+                    }
                 }
             }
 
@@ -372,6 +396,19 @@ private fun CropButton(isCropped: Boolean, onClick: () -> Unit, modifier: Modifi
 }
 
 @Composable
+private fun RotateButton(iconResource: DrawableResource, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    FilledTonalIconButton(
+        onClick = onClick,
+        modifier = modifier,
+        colors = IconButtonDefaults.filledTonalIconButtonColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        ),
+    ) {
+        Icon(painterResource(iconResource), contentDescription, modifier = Modifier.size(20.dp))
+    }
+}
+
+@Composable
 private fun ZoomResetButton(zoom: PreviewZoomState, modifier: Modifier = Modifier) {
     AnimatedVisibility(visible = zoom.isTransformed, enter = fadeIn(), exit = fadeOut(), modifier = modifier) {
         FilledTonalButton(
@@ -463,6 +500,8 @@ private fun PreviewPaneForPreview(zoom: PreviewZoomState) {
                 zoom = zoom,
                 onMove = {},
                 onCropChange = {},
+                onRotateClockwise = {},
+                onRotateCounterClockwise = {},
             )
         }
     }
