@@ -81,6 +81,7 @@ class ImagePrepViewModel(
         override fun selectAll() = this@ImagePrepViewModel.selectAll()
         override fun clearSelection() = this@ImagePrepViewModel.clearSelection()
         override fun moveFocus(delta: Int) = this@ImagePrepViewModel.moveFocus(delta)
+        override fun extendSelection(delta: Int) = this@ImagePrepViewModel.extendSelection(delta)
         override fun selectSortKey(key: ImageSortKey) = this@ImagePrepViewModel.selectSortKey(key)
         override fun toggleSortDirection() = this@ImagePrepViewModel.toggleSortDirection()
         override fun removeImage(file: File) = this@ImagePrepViewModel.removeImage(file)
@@ -423,6 +424,24 @@ class ImagePrepViewModel(
             val current = ordered.indexOfFirst { it.file == state.focusedFile }.coerceAtLeast(0)
             val next = ordered[(current + delta).coerceIn(0, ordered.lastIndex)].file
             state.copy(focusedFile = next, selection = setOf(next), anchor = next, isSelectionMode = false)
+        }
+    }
+
+    /** Shift + 矢印。フォーカスを動かし、起点からフォーカス先までを選択する */
+    private fun extendSelection(delta: Int) {
+        mutate { state ->
+            val ordered = state.orderedImages
+            if (ordered.isEmpty()) return@mutate state
+            val current = ordered.indexOfFirst { it.file == state.focusedFile }.coerceAtLeast(0)
+            val next = (current + delta).coerceIn(0, ordered.lastIndex)
+            val anchor = ordered.indexOfFirst { it.file == state.anchor }.takeIf { it >= 0 } ?: current
+            val range = ordered.subList(minOf(anchor, next), maxOf(anchor, next) + 1).map { it.file }
+            state.copy(
+                focusedFile = ordered[next].file,
+                selection = range.toSet(),
+                anchor = ordered[anchor].file,
+                isSelectionMode = range.size > 1,
+            )
         }
     }
 
