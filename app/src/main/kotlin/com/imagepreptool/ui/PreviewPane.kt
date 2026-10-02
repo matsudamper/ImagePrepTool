@@ -36,6 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -214,12 +215,15 @@ private fun PreviewPaneContent(
                     onCropChange = onCropChange,
                     onDone = { openEditor = PreviewEditor.None },
                 )
-                bitmap != null && activeEditor == PreviewEditor.Pen -> PenEditor(
-                    bitmap = bitmap,
-                    strokes = preview.strokes,
-                    onStrokesChange = onStrokesChange,
-                    onDone = { openEditor = PreviewEditor.None },
-                )
+                // 元に戻すの履歴は画像ごとなので、画像を切り替えたら作り直す
+                bitmap != null && activeEditor == PreviewEditor.Pen -> key(preview.file) {
+                    PenEditor(
+                        bitmap = bitmap,
+                        strokes = preview.strokes,
+                        onStrokesChange = onStrokesChange,
+                        onDone = { openEditor = PreviewEditor.None },
+                    )
+                }
                 bitmap != null -> FittedImage(bitmap, zoom)
                 preview.file != null -> CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.5.dp, color = ext.canvasContent)
                 else -> Text("画像を選択するとプレビューが表示されます", color = ext.canvasContent)

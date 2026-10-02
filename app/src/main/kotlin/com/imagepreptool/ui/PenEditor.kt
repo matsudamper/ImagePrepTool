@@ -5,6 +5,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
@@ -26,6 +27,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,6 +42,8 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -48,6 +53,15 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEvent
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.onPointerEvent
@@ -75,7 +89,8 @@ private val PenColors = listOf(
 )
 
 /**
- * プレビュー上にペンで線を描く。ぼかしを選ぶと、なぞった部分だけをぼかす
+ * プレビュー上にペンで線を描く。ぼかしを選ぶと、なぞった部分だけをぼかす。
+ * Ctrl+Z で元に戻し、Ctrl+Y / Ctrl+Shift+Z でやり直す
  */
 @Composable
 internal fun PenEditor(
@@ -89,8 +104,31 @@ internal fun PenEditor(
     var widthPercent by rememberSaveable { mutableFloatStateOf(1.5f) }
     var color by rememberSaveable { mutableIntStateOf(PenColors[2]) }
     var blurPercent by rememberSaveable { mutableFloatStateOf(1.5f) }
+    val history = remember { PenHistory() }
+    val focusRequester = remember { FocusRequester() }
+    val change = { next: List<PenStroke> ->
+        history.record(strokes)
+        onStrokesChange(next)
+    }
+    val undo = { history.undo(strokes)?.let(onStrokesChange) }
+    val redo = { history.redo(strokes)?.let(onStrokesChange) }
 
-    Column(modifier.fillMaxSize()) {
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+
+    Column(
+        modifier
+            .fillMaxSize()
+            .focusRequester(focusRequester)
+            .focusable()
+            .onPreviewKeyEvent { event ->
+                when (event.toHistoryShortcut()) {
+                    HistoryShortcut.Undo -> undo()
+                    HistoryShortcut.Redo -> redo()
+                    null -> return@onPreviewKeyEvent false
+                }
+                true
+            },
+    ) {
         Surface(color = MaterialTheme.colorScheme.surface) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                 Row(
@@ -106,8 +144,9 @@ internal fun PenEditor(
                         modifier = Modifier.width(150.dp),
                     )
                     Box(Modifier.weight(1f))
-                    TextButton(onClick = { onStrokesChange(strokes.dropLast(1)) }, enabled = strokes.isNotEmpty()) { Text("元に戻す") }
-                    TextButton(onClick = { onStrokesChange(listOf()) }, enabled = strokes.isNotEmpty()) { Text("すべて消す") }
+                    TextButton(onClick = { undo() }, enabled = history.canUndo(strokes)) { Text("元に戻す") }
+                    TextButton(onClick = { redo() }, enabled = history.canRedo) { Text("やり直す") }
+                    TextButton(onClick = { change(listOf()) }, enabled = strokes.isNotEmpty()) { Text("すべて消す") }
                     Button(onClick = onDone, shape = MaterialTheme.shapes.small) { Text("完了") }
                 }
                 Row(
@@ -152,7 +191,9 @@ internal fun PenEditor(
                     bitmap = bitmap,
                     displaySize = displaySize,
                     newStroke = { points -> PenStroke(kind, points, widthPercent, color, blurPercent) },
-                    onStrokeAdd = { stroke -> onStrokesChange(strokes + stroke) },
+                    onStrokeAdd = { stroke -> change(strokes + stroke) },
+                    // ボタンなどにフォーカスが移った後も、描き始めれば Ctrl+Z が効くようにする
+                    onPress = { focusRequester.requestFocus() },
                     modifier = Modifier.fillMaxSize(),
                 )
             }
@@ -167,6 +208,7 @@ private fun PenOverlay(
     displaySize: Size,
     newStroke: (List<PenPoint>) -> PenStroke,
     onStrokeAdd: (PenStroke) -> Unit,
+    onPress: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val latestNewStroke by rememberUpdatedState(newStroke)
@@ -188,6 +230,7 @@ private fun PenOverlay(
             .pointerHoverIcon(PointerIcon(Cursor(Cursor.CROSSHAIR_CURSOR)))
             .onPointerEvent(PointerEventType.Move) { event -> hoverPosition = event.changes.first().position }
             .onPointerEvent(PointerEventType.Exit) { hoverPosition = null }
+            .onPointerEvent(PointerEventType.Press) { onPress() }
             .pointerInput(displaySize) {
                 detectTapGestures(onTap = { position -> commit(listOf(position)) })
             }
@@ -220,6 +263,54 @@ private fun PenOverlay(
             drawCircle(Color.Black.copy(alpha = 0.6f), radius = strokeWidth / 2, center = position, style = Stroke(width = 2f))
             drawCircle(Color.White, radius = strokeWidth / 2, center = position, style = Stroke(width = 1f))
         }
+    }
+}
+
+private enum class HistoryShortcut { Undo, Redo }
+
+private fun KeyEvent.toHistoryShortcut(): HistoryShortcut? {
+    if (type != KeyEventType.KeyDown || !(isCtrlPressed || isMetaPressed)) return null
+    return when (key) {
+        Key.Z -> if (isShiftPressed) HistoryShortcut.Redo else HistoryShortcut.Undo
+        Key.Y -> HistoryShortcut.Redo
+        else -> null
+    }
+}
+
+/**
+ * 編集画面を開いている間の元に戻す / やり直すの履歴。
+ * 開く前に描いた線は履歴に無いため、元に戻すと 1 本ずつ消す
+ */
+@Stable
+private class PenHistory {
+    private var undoSnapshots by mutableStateOf(listOf<List<PenStroke>>())
+    private var redoSnapshots by mutableStateOf(listOf<List<PenStroke>>())
+
+    val canRedo: Boolean get() = redoSnapshots.isNotEmpty()
+
+    fun canUndo(current: List<PenStroke>): Boolean = undoSnapshots.isNotEmpty() || current.isNotEmpty()
+
+    /** [current] から変更する直前に呼ぶ */
+    fun record(current: List<PenStroke>) {
+        undoSnapshots = undoSnapshots + listOf(current)
+        redoSnapshots = listOf()
+    }
+
+    /** 戻した後の線。戻せなければ null */
+    fun undo(current: List<PenStroke>): List<PenStroke>? {
+        if (!canUndo(current)) return null
+        val previous = undoSnapshots.lastOrNull() ?: current.dropLast(1)
+        undoSnapshots = undoSnapshots.dropLast(1)
+        redoSnapshots = redoSnapshots + listOf(current)
+        return previous
+    }
+
+    /** やり直した後の線。やり直せなければ null */
+    fun redo(current: List<PenStroke>): List<PenStroke>? {
+        val next = redoSnapshots.lastOrNull() ?: return null
+        redoSnapshots = redoSnapshots.dropLast(1)
+        undoSnapshots = undoSnapshots + listOf(current)
+        return next
     }
 }
 
