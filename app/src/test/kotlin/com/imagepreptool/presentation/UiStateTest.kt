@@ -207,6 +207,29 @@ class UiStateTest {
     }
 
     @Test
+    fun shiftArrowExtendsSelectionFromAnchor() {
+        val files = (1..5).map { File("/photos/$it.jpg") }
+        val vm = ImagePrepViewModel(
+            settings = com.imagepreptool.data.InMemorySettingsStore(),
+            checkTools = { ExternalTools.None },
+        )
+        vm.addFilesForTest(files)
+        vm.snapshotForTest().listener.clickImage(files[1], SelectMode.Single)
+        vm.snapshotForTest().listener.extendSelection(1)
+        vm.snapshotForTest().listener.extendSelection(1)
+        var state = vm.snapshotForTest()
+        assertEquals(setOf(files[1], files[2], files[3]), state.selectedFiles)
+        assertEquals(files[3], state.focusedFile)
+        assertTrue(state.isExportingSelection)
+
+        // 起点を越えて戻ると反対側へ広がる
+        vm.snapshotForTest().listener.extendSelection(-3)
+        state = vm.snapshotForTest()
+        assertEquals(setOf(files[0], files[1]), state.selectedFiles)
+        assertEquals(files[0], state.focusedFile)
+    }
+
+    @Test
     fun undoRestoresRemovedImagesAtOriginalPositions() {
         val files = (1..5).map { File("/photos/$it.jpg") }
         val vm = ImagePrepViewModel(

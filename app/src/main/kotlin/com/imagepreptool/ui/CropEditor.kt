@@ -69,7 +69,7 @@ internal enum class CropAspect(val label: String) {
     fun ratio(imageSize: ImageSize, portrait: Boolean): Float? {
         val landscapeRatio = when (this) {
             Free -> return null
-            Original -> imageSize.width.toFloat() / imageSize.height
+            Original -> maxOf(imageSize.width, imageSize.height).toFloat() / minOf(imageSize.width, imageSize.height)
             Square -> 1f
             FourThree -> 4f / 3f
             ThreeTwo -> 3f / 2f
@@ -93,7 +93,7 @@ internal fun CropEditor(
     modifier: Modifier = Modifier,
 ) {
     var aspect by rememberSaveable { mutableStateOf(CropAspect.Free) }
-    var portrait by rememberSaveable { mutableStateOf(imageSize.height > imageSize.width) }
+    var portrait by rememberSaveable(imageSize) { mutableStateOf(imageSize.height > imageSize.width) }
     val ratio = aspect.ratio(imageSize, portrait)
     val currentCrop = crop ?: CropRect.Full
 

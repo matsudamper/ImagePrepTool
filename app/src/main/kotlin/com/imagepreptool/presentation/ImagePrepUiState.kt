@@ -143,6 +143,7 @@ data class ImagePrepUiState(
         fun selectAll()
         fun clearSelection()
         fun moveFocus(delta: Int)
+        fun extendSelection(delta: Int)
         fun selectSortKey(key: ImageSortKey)
         fun toggleSortDirection()
         fun removeImage(file: File)
