@@ -43,6 +43,7 @@ import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.OutputPathMode
 import com.imagepreptool.model.ProcessResult
+import com.imagepreptool.model.Rotation
 import com.imagepreptool.service.CaptionRenderer
 import com.imagepreptool.service.CaptionTemplate
 import com.imagepreptool.service.Cropper
@@ -57,6 +58,7 @@ import com.imagepreptool.service.OutputPlanner
 import com.imagepreptool.service.PlannedOutput
 import com.imagepreptool.service.RelativeOutputPath
 import com.imagepreptool.service.Resizer
+import com.imagepreptool.service.Rotator
 
 class ImagePrepViewModel(
     private val settings: SettingsStore = PreferencesSettingsStore(),
@@ -91,6 +93,9 @@ class ImagePrepViewModel(
         override fun updateOptions(transform: (EditOptions) -> EditOptions) = this@ImagePrepViewModel.updateOptions(transform)
         override fun setInputValid(field: String, valid: Boolean) = this@ImagePrepViewModel.setInputValid(field, valid)
         override fun setCrop(file: File, crop: CropRect?) = this@ImagePrepViewModel.setCrop(file, crop)
+        override fun rotateClockwise(file: File) = this@ImagePrepViewModel.rotate(file, Rotation::rotatedClockwise, CropRect::rotatedClockwise)
+        override fun rotateCounterClockwise(file: File) =
+            this@ImagePrepViewModel.rotate(file, Rotation::rotatedCounterClockwise, CropRect::rotatedCounterClockwise)
         override fun chooseOutputDirectory(dir: File) = this@ImagePrepViewModel.chooseOutputDirectory(dir)
         override fun setOutputPathMode(mode: OutputPathMode) = this@ImagePrepViewModel.setOutputPathMode(mode)
         override fun setRelativeOutputPath(path: String) = this@ImagePrepViewModel.setRelativeOutputPath(path)
@@ -268,6 +273,7 @@ class ImagePrepViewModel(
                 lastRemoval = null,
                 removedFiles = emptySet(),
                 crops = mapOf(),
+                rotations = mapOf(),
                 fileDates = mapOf(),
             )
         }
@@ -452,6 +458,18 @@ class ImagePrepViewModel(
         }
     }
 
+    /** 切り抜き範囲は回転後の画像に対する割合なので、同じ部分を指し続けるよう一緒に回す */
+    private fun rotate(file: File, rotateRotation: (Rotation) -> Rotation, rotateCrop: (CropRect) -> CropRect) {
+        mutate { state ->
+            val rotation = rotateRotation(state.rotations[file] ?: Rotation.None)
+            val crop = state.crops[file]
+            state.copy(
+                rotations = if (rotation == Rotation.None) state.rotations - file else state.rotations + (file to rotation),
+                crops = if (crop == null) state.crops else state.crops + (file to rotateCrop(crop)),
+            )
+        }
+    }
+
     private fun chooseOutputDirectory(dir: File) {
         mutate { it.copy(selectedOutputDir = dir) }
     }
@@ -495,7 +513,7 @@ class ImagePrepViewModel(
                         options = state.options,
                         // 書き出さない画像や一覧から削除した画像も元画像なので上書きしない
                         protectedFiles = state.images.map { it.file } + state.removedFiles,
-                    ).map { it.copy(crop = state.crops[it.source]) }
+                    ).map { it.copy(rotation = state.rotations[it.source] ?: Rotation.None, crop = state.crops[it.source]) }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -626,17 +644,24 @@ class ImagePrepViewModel(
             mutate { it.copy(preview = EmptyPreview.copy(file = file, error = e.message ?: "読み込めません")) }
             return
         }
-        val original = withContext(Dispatchers.Default) { source.loaded.image.toComposeImageBitmap() }
-        mutate {
-            it.copy(
-                preview = it.preview.copy(
-                    original = original,
-                    originalSize = source.loaded.size,
-                    captionFields = source.fields,
-                ),
-            )
+        viewModelStateFlow.map { it.rotations[file] ?: Rotation.None }.distinctUntilChanged().collectLatestSafe { rotation ->
+            val rotated = withContext(Dispatchers.Default) { Rotator.rotate(source.loaded.image, rotation) }
+            val rotatedSize = Rotator.rotatedSize(source.loaded.size, rotation)
+            val original = withContext(Dispatchers.Default) { rotated.toComposeImageBitmap() }
+            mutate {
+                it.copy(
+                    preview = it.preview.copy(
+                        original = original,
+                        originalSize = rotatedSize,
+                        captionFields = source.fields,
+                    ),
+                )
+            }
+            renderProcessedPreview(file, LoadedImage(rotated, rotatedSize), source.fields, tools)
         }
+    }
 
+    private suspend fun renderProcessedPreview(file: File, rotated: LoadedImage, fields: Map<CaptionField, String>, tools: ExternalTools) {
         // 非 HEIF 画像はツール確認前に開かれることがあり、cwebp が見つかったら WebP のプレビューを作り直す
         viewModelStateFlow.map { ProcessedPreviewKey(it.options, it.tools ?: tools, it.crops[file]) }.distinctUntilChanged().collectLatestSafe { key ->
             val options = key.options
@@ -645,12 +670,12 @@ class ImagePrepViewModel(
             val outputFormat = OutputPlanner.resolveFormat(file, options.outputFormat)
             // cwebp は外部プロセスで重いため、品質スライダー操作中は待ってからまとめてエンコードする
             delay(if (outputFormat == OutputFormat.Webp) 300 else 80)
-            val outputSize = Resizer.targetSize(Cropper.croppedSize(source.loaded.size, key.crop), options)
-            val image = Cropper.crop(source.loaded.image, key.crop)
+            val outputSize = Resizer.targetSize(Cropper.croppedSize(rotated.size, key.crop), options)
+            val image = Cropper.crop(rotated.image, key.crop)
             val renderSize = Resizer.fitWithin(outputSize, image.width, image.height)
             val processor = ImageProcessor(currentTools)
             val caption = if (options.captionEnabled) {
-                CaptionTemplate.render(options.captionTemplate, source.fields).takeIf { it.isNotBlank() }
+                CaptionTemplate.render(options.captionTemplate, fields).takeIf { it.isNotBlank() }
             } else {
                 null
             }
@@ -775,6 +800,8 @@ internal data class ImagePrepViewModelState(
     val removedFiles: Set<File> = setOf(),
     /** 画像ごとの切り抜き範囲。切り抜かない画像は含めない */
     val crops: Map<File, CropRect> = mapOf(),
+    /** 画像ごとの回転。回さない画像は含めない */
+    val rotations: Map<File, Rotation> = mapOf(),
     val sortOrder: ImageSortOrder = ImageSortOrder(ImageSortKey.Name, ascending = true),
     /** 並べ替えに使う日時。読み込み中の画像は含まれない */
     val fileDates: Map<File, FileDates> = mapOf(),

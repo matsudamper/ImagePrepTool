@@ -153,6 +153,8 @@ data class ImagePrepUiState(
         fun updateOptions(transform: (EditOptions) -> EditOptions)
         fun setInputValid(field: String, valid: Boolean)
         fun setCrop(file: File, crop: CropRect?)
+        fun rotateClockwise(file: File)
+        fun rotateCounterClockwise(file: File)
         fun chooseOutputDirectory(dir: File)
         fun setOutputPathMode(mode: OutputPathMode)
         fun setRelativeOutputPath(path: String)

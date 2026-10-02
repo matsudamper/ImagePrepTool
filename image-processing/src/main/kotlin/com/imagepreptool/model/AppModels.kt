@@ -145,9 +145,30 @@ data class CropRect(val left: Float, val top: Float, val right: Float, val botto
     val height: Float get() = bottom - top
     val isFull: Boolean get() = left <= 0f && top <= 0f && right >= 1f && bottom >= 1f
 
+    /** 画像を時計回りに 90° 回したときに同じ部分を指す範囲 */
+    fun rotatedClockwise(): CropRect = CropRect(left = 1f - bottom, top = left, right = 1f - top, bottom = right)
+
+    /** 画像を反時計回りに 90° 回したときに同じ部分を指す範囲 */
+    fun rotatedCounterClockwise(): CropRect = CropRect(left = top, top = 1f - right, right = bottom, bottom = 1f - left)
+
     companion object {
         val Full = CropRect(0f, 0f, 1f, 1f)
     }
+}
+
+/** 向き補正後の画像に加える時計回りの回転 */
+enum class Rotation {
+    None,
+    Clockwise90,
+    Clockwise180,
+    Clockwise270,
+    ;
+
+    val swapsDimensions: Boolean get() = this == Clockwise90 || this == Clockwise270
+
+    fun rotatedClockwise(): Rotation = entries[(ordinal + 1) % entries.size]
+
+    fun rotatedCounterClockwise(): Rotation = entries[(ordinal + entries.size - 1) % entries.size]
 }
 
 /** 一覧の並べ替えに使う日時（エポックミリ秒）。取得できないものは null */
