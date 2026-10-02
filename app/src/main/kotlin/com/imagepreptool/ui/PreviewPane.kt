@@ -70,11 +70,13 @@ import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.PenStroke
 import com.imagepreptool.presentation.ImageItem
 import com.imagepreptool.presentation.PreviewState
 import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_arrow_forward
 import com.imagepreptool.resources.ic_broken_image
+import com.imagepreptool.resources.ic_brush
 import com.imagepreptool.resources.ic_chevron_left
 import com.imagepreptool.resources.ic_chevron_right
 import com.imagepreptool.resources.ic_crop
@@ -95,6 +97,8 @@ private enum class PreviewMode(val label: String) {
     val toggled: PreviewMode get() = if (this == Processed) Original else Processed
 }
 
+private enum class PreviewEditor { None, Crop, Pen }
+
 @Composable
 fun PreviewPane(
     preview: PreviewState,
@@ -106,6 +110,7 @@ fun PreviewPane(
     onCropChange: (File, CropRect?) -> Unit,
     onRotateClockwise: (File) -> Unit,
     onRotateCounterClockwise: (File) -> Unit,
+    onStrokesChange: (File, List<PenStroke>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val zoom = remember(preview.file) { PreviewZoomState(initialScale = PreviewZoomState.MIN_SCALE, initialOffset = Offset.Zero) }
@@ -120,6 +125,7 @@ fun PreviewPane(
         onCropChange = { crop -> preview.file?.let { onCropChange(it, crop) } },
         onRotateClockwise = { preview.file?.let(onRotateClockwise) },
         onRotateCounterClockwise = { preview.file?.let(onRotateCounterClockwise) },
+        onStrokesChange = { strokes -> preview.file?.let { onStrokesChange(it, strokes) } },
         modifier = modifier,
     )
 }
@@ -136,11 +142,12 @@ private fun PreviewPaneContent(
     onCropChange: (CropRect?) -> Unit,
     onRotateClockwise: () -> Unit,
     onRotateCounterClockwise: () -> Unit,
+    onStrokesChange: (List<PenStroke>) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ext = AppTheme.extended
     var mode by rememberSaveable { mutableStateOf(PreviewMode.Processed) }
-    var isCropEditing by rememberSaveable { mutableStateOf(false) }
+    var openEditor by rememberSaveable { mutableStateOf(PreviewEditor.None) }
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
 
@@ -179,39 +186,46 @@ private fun PreviewPaneContent(
         }
 
         // 画像
-        // 切り抜きは書き出し後の設定なので、書き出し後の表示でだけ編集する
-        val isCropping = isCropEditing && mode == PreviewMode.Processed
+        // 切り抜きやペンは書き出し後の設定なので、書き出し後の表示でだけ編集する
+        val activeEditor = if (mode == PreviewMode.Processed) openEditor else PreviewEditor.None
+        val isEditing = activeEditor != PreviewEditor.None
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .clipToBounds()
                 .hoverable(interaction)
-                // 切り抜き中のドラッグは範囲の指定に使う
-                .then(if (isCropping) Modifier else Modifier.previewZoomGestures(zoom)),
+                // 編集中のドラッグは範囲の指定や線を描くのに使う
+                .then(if (isEditing) Modifier else Modifier.previewZoomGestures(zoom)),
             contentAlignment = Alignment.Center,
         ) {
             val bitmap: ImageBitmap? = when {
-                isCropping -> preview.original
+                isEditing -> preview.painted ?: preview.original
                 mode == PreviewMode.Processed -> preview.processed ?: preview.original
                 else -> preview.original
             }
             val originalSize = preview.originalSize
             when {
                 preview.error != null -> ErrorContent(preview.error)
-                bitmap != null && isCropping && originalSize != null -> CropEditor(
+                bitmap != null && activeEditor == PreviewEditor.Crop && originalSize != null -> CropEditor(
                     bitmap = bitmap,
                     imageSize = originalSize,
                     crop = preview.crop,
                     onCropChange = onCropChange,
-                    onDone = { isCropEditing = false },
+                    onDone = { openEditor = PreviewEditor.None },
+                )
+                bitmap != null && activeEditor == PreviewEditor.Pen -> PenEditor(
+                    bitmap = bitmap,
+                    strokes = preview.strokes,
+                    onStrokesChange = onStrokesChange,
+                    onDone = { openEditor = PreviewEditor.None },
                 )
                 bitmap != null -> FittedImage(bitmap, zoom)
                 preview.file != null -> CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 2.5.dp, color = ext.canvasContent)
                 else -> Text("画像を選択するとプレビューが表示されます", color = ext.canvasContent)
             }
 
-            if (!isCropping) {
+            if (!isEditing) {
                 Row(
                     modifier = Modifier.align(Alignment.TopStart).padding(10.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -236,9 +250,13 @@ private fun PreviewPaneContent(
                             contentDescription = "右に回転",
                             onClick = onRotateClockwise,
                         )
+                        PenButton(
+                            hasStrokes = preview.strokes.isNotEmpty(),
+                            onClick = { openEditor = PreviewEditor.Pen },
+                        )
                         CropButton(
                             isCropped = preview.crop != null,
-                            onClick = { isCropEditing = true },
+                            onClick = { openEditor = PreviewEditor.Crop },
                         )
                     }
                 }
@@ -396,6 +414,22 @@ private fun CropButton(isCropped: Boolean, onClick: () -> Unit, modifier: Modifi
 }
 
 @Composable
+private fun PenButton(hasStrokes: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    FilledTonalButton(
+        onClick = onClick,
+        modifier = modifier,
+        contentPadding = PaddingValues(start = 12.dp, end = 16.dp),
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = if (hasStrokes) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        ),
+    ) {
+        Icon(painterResource(Res.drawable.ic_brush), null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(if (hasStrokes) "ペン描画中" else "ペン", style = MaterialTheme.typography.labelMedium)
+    }
+}
+
+@Composable
 private fun RotateButton(iconResource: DrawableResource, contentDescription: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
     FilledTonalIconButton(
         onClick = onClick,
@@ -483,6 +517,7 @@ private fun PreviewPaneForPreview(zoom: PreviewZoomState) {
                 preview = PreviewState(
                     file = File("sample.jpg"),
                     original = original,
+                    painted = null,
                     processed = processed,
                     originalSize = ImageSize(original.width, original.height),
                     outputSize = ImageSize(processed.width, processed.height),
@@ -490,6 +525,7 @@ private fun PreviewPaneForPreview(zoom: PreviewZoomState) {
                     outputByteSize = 1_234,
                     captionFields = mapOf(),
                     crop = null,
+                    strokes = listOf(),
                     loading = false,
                     error = null,
                 ),
@@ -502,6 +538,7 @@ private fun PreviewPaneForPreview(zoom: PreviewZoomState) {
                 onCropChange = {},
                 onRotateClockwise = {},
                 onRotateCounterClockwise = {},
+                onStrokesChange = {},
             )
         }
     }

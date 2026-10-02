@@ -11,6 +11,7 @@ import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.OutputPathMode
+import com.imagepreptool.model.PenStroke
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.service.PlannedOutput
 
@@ -41,6 +42,8 @@ data class ImageGroup(
 data class PreviewState(
     val file: File?,
     val original: ImageBitmap?,
+    /** [original] にペンの線を描いたもの。線が無いときは null */
+    val painted: ImageBitmap?,
     val processed: ImageBitmap?,
     val originalSize: ImageSize?,
     val outputSize: ImageSize?,
@@ -51,6 +54,8 @@ data class PreviewState(
     val captionFields: Map<CaptionField, String>,
     /** この画像の切り抜き範囲。切り抜かないときは null */
     val crop: CropRect?,
+    /** この画像に描いたペンの線 */
+    val strokes: List<PenStroke>,
     val loading: Boolean,
     val error: String?,
 )
@@ -156,6 +161,7 @@ data class ImagePrepUiState(
         fun setCrop(file: File, crop: CropRect?)
         fun rotateClockwise(file: File)
         fun rotateCounterClockwise(file: File)
+        fun setStrokes(file: File, strokes: List<PenStroke>)
         fun chooseOutputDirectory(dir: File)
         fun setOutputPathMode(mode: OutputPathMode)
         fun setRelativeOutputPath(path: String)

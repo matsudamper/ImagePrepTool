@@ -42,6 +42,7 @@ import com.imagepreptool.model.FileDates
 import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.OutputPathMode
+import com.imagepreptool.model.PenStroke
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.model.Rotation
 import com.imagepreptool.service.CaptionRenderer
@@ -55,6 +56,7 @@ import com.imagepreptool.service.ImageLoader
 import com.imagepreptool.service.ImageProcessor
 import com.imagepreptool.service.LoadedImage
 import com.imagepreptool.service.OutputPlanner
+import com.imagepreptool.service.PenPainter
 import com.imagepreptool.service.PlannedOutput
 import com.imagepreptool.service.RelativeOutputPath
 import com.imagepreptool.service.Resizer
@@ -94,9 +96,11 @@ class ImagePrepViewModel(
         override fun updateOptions(transform: (EditOptions) -> EditOptions) = this@ImagePrepViewModel.updateOptions(transform)
         override fun setInputValid(field: String, valid: Boolean) = this@ImagePrepViewModel.setInputValid(field, valid)
         override fun setCrop(file: File, crop: CropRect?) = this@ImagePrepViewModel.setCrop(file, crop)
-        override fun rotateClockwise(file: File) = this@ImagePrepViewModel.rotate(file, Rotation::rotatedClockwise, CropRect::rotatedClockwise)
+        override fun rotateClockwise(file: File) =
+            this@ImagePrepViewModel.rotate(file, Rotation::rotatedClockwise, CropRect::rotatedClockwise, PenStroke::rotatedClockwise)
         override fun rotateCounterClockwise(file: File) =
-            this@ImagePrepViewModel.rotate(file, Rotation::rotatedCounterClockwise, CropRect::rotatedCounterClockwise)
+            this@ImagePrepViewModel.rotate(file, Rotation::rotatedCounterClockwise, CropRect::rotatedCounterClockwise, PenStroke::rotatedCounterClockwise)
+        override fun setStrokes(file: File, strokes: List<PenStroke>) = this@ImagePrepViewModel.setStrokes(file, strokes)
         override fun chooseOutputDirectory(dir: File) = this@ImagePrepViewModel.chooseOutputDirectory(dir)
         override fun setOutputPathMode(mode: OutputPathMode) = this@ImagePrepViewModel.setOutputPathMode(mode)
         override fun setRelativeOutputPath(path: String) = this@ImagePrepViewModel.setRelativeOutputPath(path)
@@ -275,6 +279,7 @@ class ImagePrepViewModel(
                 removedFiles = emptySet(),
                 crops = mapOf(),
                 rotations = mapOf(),
+                strokes = mapOf(),
                 fileDates = mapOf(),
             )
         }
@@ -477,15 +482,28 @@ class ImagePrepViewModel(
         }
     }
 
-    /** 切り抜き範囲は回転後の画像に対する割合なので、同じ部分を指し続けるよう一緒に回す */
-    private fun rotate(file: File, rotateRotation: (Rotation) -> Rotation, rotateCrop: (CropRect) -> CropRect) {
+    /** 切り抜き範囲とペンの線は回転後の画像に対する割合なので、同じ部分を指し続けるよう一緒に回す */
+    private fun rotate(
+        file: File,
+        rotateRotation: (Rotation) -> Rotation,
+        rotateCrop: (CropRect) -> CropRect,
+        rotateStroke: (PenStroke) -> PenStroke,
+    ) {
         mutate { state ->
             val rotation = rotateRotation(state.rotations[file] ?: Rotation.None)
             val crop = state.crops[file]
+            val strokes = state.strokes[file]
             state.copy(
                 rotations = if (rotation == Rotation.None) state.rotations - file else state.rotations + (file to rotation),
                 crops = if (crop == null) state.crops else state.crops + (file to rotateCrop(crop)),
+                strokes = if (strokes == null) state.strokes else state.strokes + (file to strokes.map(rotateStroke)),
             )
+        }
+    }
+
+    private fun setStrokes(file: File, strokes: List<PenStroke>) {
+        mutate { state ->
+            if (strokes.isEmpty()) state.copy(strokes = state.strokes - file) else state.copy(strokes = state.strokes + (file to strokes))
         }
     }
 
@@ -532,7 +550,13 @@ class ImagePrepViewModel(
                         options = state.options,
                         // 書き出さない画像や一覧から削除した画像も元画像なので上書きしない
                         protectedFiles = state.images.map { it.file } + state.removedFiles,
-                    ).map { it.copy(rotation = state.rotations[it.source] ?: Rotation.None, crop = state.crops[it.source]) }
+                    ).map {
+                        it.copy(
+                            rotation = state.rotations[it.source] ?: Rotation.None,
+                            crop = state.crops[it.source],
+                            strokes = state.strokes[it.source].orEmpty(),
+                        )
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -681,8 +705,28 @@ class ImagePrepViewModel(
     }
 
     private suspend fun renderProcessedPreview(file: File, rotated: LoadedImage, fields: Map<CaptionField, String>, tools: ExternalTools) {
+        coroutineScope {
+            // ペンで描いている間は書き出し後のプレビューより先に、線を描いた元画像だけを素早く返す
+            launch { observePaintedPreview(file, rotated) }
+            observeProcessedPreview(file, rotated, fields, tools)
+        }
+    }
+
+    private suspend fun observePaintedPreview(file: File, rotated: LoadedImage) {
+        viewModelStateFlow.map { it.strokes[file].orEmpty() }.distinctUntilChanged().collectLatestSafe { strokes ->
+            val painted = if (strokes.isEmpty()) {
+                null
+            } else {
+                runInterruptible(Dispatchers.Default) { PenPainter.paint(rotated.image, strokes).toComposeImageBitmap() }
+            }
+            mutate { it.copy(preview = it.preview.copy(painted = painted)) }
+        }
+    }
+
+    private suspend fun observeProcessedPreview(file: File, rotated: LoadedImage, fields: Map<CaptionField, String>, tools: ExternalTools) {
         // 非 HEIF 画像はツール確認前に開かれることがあり、cwebp が見つかったら WebP のプレビューを作り直す
-        viewModelStateFlow.map { ProcessedPreviewKey(it.options, it.tools ?: tools, it.crops[file]) }.distinctUntilChanged().collectLatestSafe { key ->
+        val keys = viewModelStateFlow.map { ProcessedPreviewKey(it.options, it.tools ?: tools, it.crops[file], it.strokes[file].orEmpty()) }
+        keys.distinctUntilChanged().collectLatestSafe { key ->
             val options = key.options
             val currentTools = key.tools
             mutate { it.copy(preview = it.preview.copy(loading = true)) }
@@ -690,7 +734,7 @@ class ImagePrepViewModel(
             // cwebp は外部プロセスで重いため、品質スライダー操作中は待ってからまとめてエンコードする
             delay(if (outputFormat == OutputFormat.Webp) 300 else 80)
             val outputSize = Resizer.targetSize(Cropper.croppedSize(rotated.size, key.crop), options)
-            val image = Cropper.crop(rotated.image, key.crop)
+            val image = runInterruptible(Dispatchers.Default) { Cropper.crop(PenPainter.paint(rotated.image, key.strokes), key.crop) }
             val renderSize = Resizer.fitWithin(outputSize, image.width, image.height)
             val processor = ImageProcessor(currentTools)
             val caption = if (options.captionEnabled) {
@@ -716,7 +760,12 @@ class ImagePrepViewModel(
         }
     }
 
-    private data class ProcessedPreviewKey(val options: EditOptions, val tools: ExternalTools, val crop: CropRect?)
+    private data class ProcessedPreviewKey(
+        val options: EditOptions,
+        val tools: ExternalTools,
+        val crop: CropRect?,
+        val strokes: List<PenStroke>,
+    )
 
     private class RenderedPreview(val image: BufferedImage, val encodedByteSize: Long?)
 
@@ -775,6 +824,7 @@ private suspend fun <T> Flow<T>.collectLatestSafe(action: suspend (T) -> Unit) {
 private val EmptyPreview = PreviewState(
     file = null,
     original = null,
+    painted = null,
     processed = null,
     originalSize = null,
     outputSize = null,
@@ -782,6 +832,7 @@ private val EmptyPreview = PreviewState(
     outputByteSize = null,
     captionFields = mapOf(),
     crop = null,
+    strokes = listOf(),
     loading = false,
     error = null,
 )
@@ -821,6 +872,8 @@ internal data class ImagePrepViewModelState(
     val crops: Map<File, CropRect> = mapOf(),
     /** 画像ごとの回転。回さない画像は含めない */
     val rotations: Map<File, Rotation> = mapOf(),
+    /** 画像ごとのペンの線。描いていない画像は含めない */
+    val strokes: Map<File, List<PenStroke>> = mapOf(),
     val sortOrder: ImageSortOrder = ImageSortOrder(ImageSortKey.Name, ascending = true),
     /** 並べ替えに使う日時。読み込み中の画像は含まれない */
     val fileDates: Map<File, FileDates> = mapOf(),
@@ -918,7 +971,7 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
         relativeOutputPath = relativeOutputPath,
         tools = tools,
         recentFolders = recentFolders,
-        preview = preview.copy(crop = preview.file?.let(crops::get)),
+        preview = preview.copy(crop = preview.file?.let(crops::get), strokes = preview.file?.let(strokes::get).orEmpty()),
         export = export,
         notices = notices,
         isLoading = isLoading,

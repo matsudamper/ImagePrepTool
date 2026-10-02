@@ -6,6 +6,7 @@ import com.imagepreptool.model.ConflictPolicy
 import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.PenStroke
 import com.imagepreptool.model.Rotation
 
 data class PlannedOutput(
@@ -17,6 +18,8 @@ data class PlannedOutput(
     val rotation: Rotation,
     /** [rotation] で回した後の画像に対する範囲 */
     val crop: CropRect?,
+    /** [rotation] で回した後、切り抜く前の画像に描く線 */
+    val strokes: List<PenStroke>,
     val skip: Boolean = false,
 )
 
@@ -88,7 +91,7 @@ object OutputPlanner {
                 target = nextFreeName(target) { it.key() in used || isOriginal(it) || it.exists() }
             }
             used += target.key()
-            PlannedOutput(source, target, format, exists = target.exists(), rotation = Rotation.None, crop = null)
+            PlannedOutput(source, target, format, exists = target.exists(), rotation = Rotation.None, crop = null, strokes = listOf())
         }
     }
 
