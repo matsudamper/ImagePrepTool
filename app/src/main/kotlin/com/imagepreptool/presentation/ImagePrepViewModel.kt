@@ -29,6 +29,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
@@ -299,7 +300,12 @@ class ImagePrepViewModel(
         saveMutex.withLock { savedContents[id] = stored.content }
         // 読み込み中に削除されていたら開かない
         currentCoroutineContext().ensureActive()
-        mutate { it.withoutProject().withProject(stored, restored) }
+        // 読み込み中も前のプロジェクトは操作できるため、置き換える瞬間の状態を保存する
+        val replaced = viewModelStateFlow.getAndUpdate { it.withoutProject().withProject(stored, restored) }
+        if (replaced.project != null && replaced.project.id != id) {
+            rememberClosingProject(replaced)
+            viewModelScope.launch { saveClosingProject(replaced) }
+        }
         projectStore.markOpened(id, System.currentTimeMillis())
         saveLastProject()
         loadFileDates(restored.available.filter { !it.removed }.map { it.file })
