@@ -312,7 +312,7 @@ class UiStateTest {
                 crops = mapOf(image to CropRect(0.1f, 0.1f, 0.9f, 0.9f)),
                 rotations = mapOf(image to Rotation.Clockwise90),
                 removedFiles = setOf(image),
-                detachedStamps = mapOf(image to stampWhenRemoved),
+                editStamps = mapOf(image to stampWhenRemoved),
             )
 
             // 一覧から外している間に、同じ場所へ大きさの違う別の画像が置かれた
@@ -336,7 +336,7 @@ class UiStateTest {
             val crop = CropRect(0.1f, 0.1f, 0.9f, 0.9f)
             val state = ImagePrepViewModelState(
                 unavailableImages = listOf(same, replaced).map { ProjectImage(it, false, false, crop, Rotation.Clockwise90, listOf()) },
-                detachedStamps = mapOf(
+                editStamps = mapOf(
                     same to FileStamp.of(same),
                     // 見つからなかった間に、同じ場所へ大きさの違う別の画像が置かれた
                     replaced to FileStamp(size = 999, modifiedAtMillis = replaced.lastModified()),

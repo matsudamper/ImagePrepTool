@@ -301,11 +301,10 @@ class ImagePrepViewModel(
         // 一覧から外した画像も、同じ場所に別の画像が置かれたときに照合できるよう見つからないものとして扱う
         val (available, missing) = stored.content.images.partition { it.file.isFile }
         val checked = available.map { it.withoutEditsIfChanged(stored.stamps[it.file]) }
-        val detachedFiles = (missing + available.filter { it.removed }).map { it.file }.toSet()
         return RestoredImages(
             available = checked,
             missing = missing,
-            detachedStamps = stored.stamps.filterKeys { it in detachedFiles },
+            editStamps = stored.stamps,
             changedCount = checked.zip(available).count { (after, before) -> after != before },
         )
     }
@@ -313,7 +312,7 @@ class ImagePrepViewModel(
     private class RestoredImages(
         val available: List<ProjectImage>,
         val missing: List<ProjectImage>,
-        val detachedStamps: Map<File, FileStamp>,
+        val editStamps: Map<File, FileStamp>,
         val changedCount: Int,
     )
 
@@ -329,7 +328,7 @@ class ImagePrepViewModel(
             images = active.map(::ImageItem),
             removedFiles = restored.available.filter { it.removed }.map { it.file }.toSet(),
             unavailableImages = restored.missing,
-            detachedStamps = restored.detachedStamps,
+            editStamps = restored.editStamps,
             focusedFile = focused,
             selection = selection.ifEmpty { setOfNotNull(focused) },
             anchor = focused,
@@ -641,7 +640,6 @@ class ImagePrepViewModel(
                     isSelectionMode = state.isSelectionMode,
                 ),
                 removedFiles = state.removedFiles + removed.map { it.value.file },
-                detachedStamps = state.detachedStamps + removed.map { it.value.file }.filter { it.isFile }.associateWith(FileStamp::of),
             )
         }
         val removedCount = before.images.size - viewModelStateFlow.value.images.size
@@ -775,7 +773,8 @@ class ImagePrepViewModel(
 
     private fun setCrop(file: File, crop: CropRect?) {
         mutate { state ->
-            if (crop == null || crop.isFull) state.copy(crops = state.crops - file) else state.copy(crops = state.crops + (file to crop))
+            val edited = state.withEditStamp(file)
+            if (crop == null || crop.isFull) edited.copy(crops = state.crops - file) else edited.copy(crops = state.crops + (file to crop))
         }
     }
 
@@ -790,7 +789,7 @@ class ImagePrepViewModel(
             val rotation = rotateRotation(state.rotations[file] ?: Rotation.None)
             val crop = state.crops[file]
             val strokes = state.strokes[file]
-            state.copy(
+            state.withEditStamp(file).copy(
                 rotations = if (rotation == Rotation.None) state.rotations - file else state.rotations + (file to rotation),
                 crops = if (crop == null) state.crops else state.crops + (file to rotateCrop(crop)),
                 strokes = if (strokes == null) state.strokes else state.strokes + (file to strokes.map(rotateStroke)),
@@ -800,7 +799,8 @@ class ImagePrepViewModel(
 
     private fun setStrokes(file: File, strokes: List<PenStroke>) {
         mutate { state ->
-            if (strokes.isEmpty()) state.copy(strokes = state.strokes - file) else state.copy(strokes = state.strokes + (file to strokes))
+            val edited = state.withEditStamp(file)
+            if (strokes.isEmpty()) edited.copy(strokes = state.strokes - file) else edited.copy(strokes = state.strokes + (file to strokes))
         }
     }
 
@@ -1184,10 +1184,10 @@ internal data class ImagePrepViewModelState(
     /** プロジェクトを開いたときに見つからなかった画像。一覧には出さず、ファイルが戻ったときのために保存だけしておく */
     val unavailableImages: List<ProjectImage> = listOf(),
     /**
-     * 一覧に無い画像（[removedFiles] と [unavailableImages]）の、保存したときや一覧から外したときの大きさと日時。
-     * 追加し直したときに中身が同じかを確かめ、別の画像に前の編集を当てないようにする
+     * 画像ごとの、切り抜き・回転・ペンを編集したときの中身の大きさと日時。
+     * 一覧から外した画像や見つからなかった画像を追加し直したときに照合し、別の画像に前の編集を当てないようにする
      */
-    val detachedStamps: Map<File, FileStamp> = mapOf(),
+    val editStamps: Map<File, FileStamp> = mapOf(),
     /** 画像ごとの切り抜き範囲。切り抜かない画像は含めない */
     val crops: Map<File, CropRect> = mapOf(),
     /** 画像ごとの回転。回さない画像は含めない */
@@ -1239,6 +1239,10 @@ internal data class ImagePrepViewModelState(
     val exportSettings: ExportSettings
         get() = ExportSettings(options, outputPathMode, relativeOutputPath, selectedOutputDir)
 
+    /** [file] の編集が、今の中身に対するものであることを記録する */
+    fun withEditStamp(file: File): ImagePrepViewModelState =
+        if (file.isFile) copy(editStamps = editStamps + (file to FileStamp.of(file))) else this
+
     fun withExportSettings(settings: ExportSettings): ImagePrepViewModelState = copy(
         options = settings.options,
         outputPathMode = settings.outputPathMode,
@@ -1251,9 +1255,9 @@ internal data class ImagePrepViewModelState(
         val addedSet = added.toSet()
         val (missingReturned, stillMissing) = unavailableImages.partition { it.file in addedSet }
         // 同じ場所に別の画像を置いた場合、前の画像に向けた編集は当てはまらない
-        val returned = missingReturned.map { it.withoutEditsIfChanged(detachedStamps[it.file]) }
+        val returned = missingReturned.map { it.withoutEditsIfChanged(editStamps[it.file]) }
         val replacedRemoved = (removedFiles intersect addedSet).filter { file ->
-            val stamp = detachedStamps[file]
+            val stamp = editStamps[file]
             stamp != null && file.isFile && stamp != FileStamp.of(file)
         }.toSet()
         return copy(
@@ -1261,7 +1265,6 @@ internal data class ImagePrepViewModelState(
             isWorkspaceOpen = true,
             removedFiles = removedFiles - addedSet,
             unavailableImages = stillMissing,
-            detachedStamps = detachedStamps - addedSet,
             crops = crops - replacedRemoved + returned.mapNotNull { image -> image.crop?.let { image.file to it } },
             rotations = rotations - replacedRemoved + returned.filter { it.rotation != Rotation.None }.map { it.file to it.rotation },
             strokes = strokes - replacedRemoved + returned.filter { it.strokes.isNotEmpty() }.map { it.file to it.strokes },
