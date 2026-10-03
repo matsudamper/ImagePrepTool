@@ -253,6 +253,10 @@ class ImagePrepViewModel(
     }
 
     private suspend fun openProject(id: Long) {
+        // ホームに戻った直後に開き直すと、閉じたときの保存がまだ終わっていないことがある。
+        // 保存前の内容を読むと、その後の差分保存で直前の編集を上書きしてしまう
+        val pending = closingProjects[id]
+        if (pending != null && !saveClosingProject(pending)) return
         val stored = projectStore.loadProject(id)
         if (stored == null) {
             messageChannel.send(SnackbarMessage("プロジェクトが見つかりません"))
@@ -376,39 +380,45 @@ class ImagePrepViewModel(
      * 保存の完了まで UI スレッドを止めることがあるため、保存は UI スレッドに戻らずに済ませる。
      * 戻る必要があると [saveBeforeExit] と待ち合って止まる
      */
-    private suspend fun saveProject(state: ImagePrepViewModelState) {
-        val project = state.project ?: return
-        val saved = withContext(Dispatchers.IO) {
+    /** @return 保存できなかったときは false。書く必要が無かったときは true */
+    private suspend fun saveProject(state: ImagePrepViewModelState): Boolean {
+        val project = state.project ?: return true
+        val result = withContext(Dispatchers.IO) {
             val content = state.toProjectContent()
             saveMutex.withLock {
                 val previous = savedProject?.takeIf { it.first == project.id }?.second
-                if (previous == content) return@withLock false
+                if (previous == content) return@withLock SaveResult.Unchanged
                 try {
                     projectStore.saveProject(project.id, previous, content)
                     savedProject = project.id to content
-                    true
+                    SaveResult.Saved
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     e.printStackTrace()
                     messageChannel.trySend(SnackbarMessage("作業内容を保存できませんでした（${e.message ?: e.javaClass.simpleName}）"))
-                    false
+                    SaveResult.Failed
                 }
             }
         }
         // プロジェクト一覧に出す画像の数を合わせる
-        if (saved) refreshProjects()
+        if (result == SaveResult.Saved) refreshProjects()
+        return result != SaveResult.Failed
     }
+
+    private enum class SaveResult { Saved, Unchanged, Failed }
 
     private fun rememberClosingProject(closing: ImagePrepViewModelState) {
         val project = closing.project ?: return
         closingProjects[project.id] = closing
     }
 
-    private suspend fun saveClosingProject(closing: ImagePrepViewModelState) {
-        val project = closing.project ?: return
-        saveProject(closing)
-        closingProjects.remove(project.id, closing)
+    /** @return 保存できなかったときは false。失敗した状態は終了時にもう一度書き込むため残す */
+    private suspend fun saveClosingProject(closing: ImagePrepViewModelState): Boolean {
+        val project = closing.project ?: return true
+        val saved = saveProject(closing)
+        if (saved) closingProjects.remove(project.id, closing)
+        return saved
     }
 
     /** 終了の直前に、まだ保存していない変更を書き込む */
