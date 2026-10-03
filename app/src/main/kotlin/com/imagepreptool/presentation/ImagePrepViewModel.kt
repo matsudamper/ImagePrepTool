@@ -281,12 +281,13 @@ class ImagePrepViewModel(
     }
 
     private suspend fun openProject(id: Long) {
-        // ホームに戻った直後に開き直すと、閉じたときの保存がまだ終わっていないことがある。
-        // 保存前の内容を読むと、その後の差分保存で直前の編集を上書きしてしまう
-        val pending = closingProjects[id]
-        if (pending != null && !saveClosingProject(pending)) return
+        // 閉じたときの保存を待つ間に削除されても取り消せるよう、待つ前から読み込み中として扱う
         openingProjectId = id
         try {
+            // ホームに戻った直後に開き直すと、閉じたときの保存がまだ終わっていないことがある。
+            // 保存前の内容を読むと、その後の差分保存で直前の編集を上書きしてしまう
+            val pending = closingProjects[id]
+            if (pending != null && !saveClosingProject(pending)) return
             openStoredProject(id)
         } finally {
             if (openingProjectId == id) openingProjectId = null
