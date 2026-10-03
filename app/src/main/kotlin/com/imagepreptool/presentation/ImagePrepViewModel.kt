@@ -903,7 +903,7 @@ class ImagePrepViewModel(
     /** 書き出しは [options] と [tools]（要求した時点の値）で行い、準備中・実行中の設定変更は反映しない */
     private fun startExport(plan: List<PlannedOutput>, outputDir: File, options: EditOptions, tools: ExternalTools?) {
         val exportSettings = viewModelStateFlow.value.exportSettings.copy(options = options)
-        viewModelScope.launch { projectStore.saveLastExportSettings(exportSettings) }
+        launchWrite { projectStore.saveLastExportSettings(exportSettings) }
         val processor = ImageProcessor(tools ?: ExternalTools.None)
         val results = Collections.synchronizedList(mutableListOf<ProcessResult>())
         mutate { it.copy(export = ExportState.Running(done = 0, total = plan.size, currentName = plan.firstOrNull()?.source?.name, cancelling = false)) }
