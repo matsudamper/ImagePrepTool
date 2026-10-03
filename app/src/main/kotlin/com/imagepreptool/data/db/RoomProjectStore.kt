@@ -75,14 +75,23 @@ internal class RoomProjectStore(private val database: AppDatabase) : ProjectStor
             connection.immediateTransaction {
                 if (isStateChanged) dao.updateProjectState(current.toStateUpdate(id))
                 deletedFiles.forEach { dao.deleteImage(id, it.path) }
+                val storedImages = dao.images(id).associateBy { it.path }
                 if (previous == null) {
                     // DB に残っている、今の内容に無い画像を消す
                     val currentPaths = current.images.map { it.file.path }.toSet()
-                    dao.images(id).filter { it.path !in currentPaths }.forEach { dao.deleteImage(id, it.path) }
+                    storedImages.keys.filter { it !in currentPaths }.forEach { dao.deleteImage(id, it) }
                 }
                 val rows = changedImages.map { (position, image) ->
-                    // 見つからない画像は、戻ってきたときに中身を照合できるよう前に保存した大きさと日時を残す
-                    val stamp = currentStamps[image.file] ?: dao.image(id, image.file.path)?.let { FileStamp(it.fileSize, it.fileModifiedAtMillis) }
+                    val storedStamp = storedImages[image.file.path]?.let { FileStamp(it.fileSize, it.fileModifiedAtMillis) }
+                    // 大きさと日時は、編集したときの中身を表す。選択など編集と関係ない変更では更新せず、
+                    // 開いている間に外で差し替えられても、次に開いたときに照合できるようにする。
+                    // 見つからない画像も、戻ってきたときに照合できるよう前の値を残す
+                    val keepsStoredStamp = previous == null || previousImages[image.file]?.value?.hasSameEdits(image) == true
+                    val stamp = if (keepsStoredStamp) {
+                        storedStamp ?: currentStamps[image.file]
+                    } else {
+                        currentStamps[image.file] ?: storedStamp
+                    }
                     image.toEntity(id, position, stamp ?: FileStamp(0, 0))
                 }
                 if (rows.isNotEmpty()) dao.upsertImages(rows)
@@ -143,6 +152,9 @@ private fun ProjectContent.toStateUpdate(id: Long) = ProjectStateUpdate(
     focusedPath = focusedFile?.path,
     isSelectionMode = isSelectionMode,
 )
+
+private fun ProjectImage.hasSameEdits(other: ProjectImage): Boolean =
+    crop == other.crop && rotation == other.rotation && strokes == other.strokes
 
 private fun ProjectImage.toEntity(projectId: Long, position: Int, stamp: FileStamp) = ProjectImageEntity(
     projectId = projectId,

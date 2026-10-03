@@ -97,6 +97,23 @@ class RoomProjectStoreTest {
     }
 
     @Test
+    fun stampIsKeptWhenOnlySelectionChanges() = runBlocking {
+        val image = File(directory, "a.jpg").apply { writeBytes(ByteArray(10)) }
+        val stampWhenEdited = FileStamp.of(image)
+        val id = store.createProject("p", exportSettings, nowMillis = 1)
+        val edited = ProjectImage(image, false, false, CropRect(0.1f, 0.1f, 0.9f, 0.9f), Rotation.None, listOf())
+        val first = ProjectContent(exportSettings, ImageSortOrder(ImageSortKey.Name, true), null, false, listOf(edited))
+        store.saveProject(id, previous = null, current = first)
+
+        // 開いている間に外で差し替えられた後、選択だけが変わった
+        image.writeBytes(ByteArray(20))
+        val second = first.copy(images = listOf(edited.copy(selected = true)))
+        store.saveProject(id, previous = first, current = second)
+
+        assertEquals(stampWhenEdited, store.loadProject(id)?.stamps?.get(image))
+    }
+
+    @Test
     fun deletingProjectForgetsItAsLastOpened() = runBlocking {
         val id = store.createProject("p", exportSettings, nowMillis = 1)
         store.saveLastProjectId(id)
