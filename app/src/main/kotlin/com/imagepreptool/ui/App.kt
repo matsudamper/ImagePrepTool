@@ -282,6 +282,7 @@ private fun Workspace(
                 onCropChange = uiState.listener::setCrop,
                 onRotateClockwise = uiState.listener::rotateClockwise,
                 onRotateCounterClockwise = uiState.listener::rotateCounterClockwise,
+                onStrokesChange = uiState.listener::setStrokes,
                 modifier = Modifier.weight(1f),
             )
             VerticalDivider(color = colors.outlineVariant)

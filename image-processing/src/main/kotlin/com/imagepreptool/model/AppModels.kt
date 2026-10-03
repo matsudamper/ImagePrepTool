@@ -178,3 +178,41 @@ data class FileDates(
     val modifiedAtMillis: Long?,
     val createdAtMillis: Long?,
 )
+
+enum class PenKind(val label: String) {
+    Draw("ペン"),
+    Blur("ぼかし"),
+}
+
+/** 回転後・切り抜き前の画像に対する割合（0〜1）の位置 */
+data class PenPoint(val x: Float, val y: Float) {
+    fun rotatedClockwise(): PenPoint = PenPoint(x = 1f - y, y = x)
+
+    fun rotatedCounterClockwise(): PenPoint = PenPoint(x = y, y = 1f - x)
+}
+
+/**
+ * ペンで描いた 1 本の線。太さとぼかしの強さは画像の短辺に対する割合（%）で持ち、縮小したプレビューでも同じ見た目にする
+ */
+data class PenStroke(
+    val kind: PenKind,
+    val points: List<PenPoint>,
+    val widthPercent: Float,
+    /** ARGB。[PenKind.Draw] のときだけ使う */
+    val color: Int,
+    /** [PenKind.Blur] のときだけ使う */
+    val blurPercent: Float,
+) {
+    /** 画像を時計回りに 90° 回したときに同じ部分をなぞる線 */
+    fun rotatedClockwise(): PenStroke = copy(points = points.map(PenPoint::rotatedClockwise))
+
+    /** 画像を反時計回りに 90° 回したときに同じ部分をなぞる線 */
+    fun rotatedCounterClockwise(): PenStroke = copy(points = points.map(PenPoint::rotatedCounterClockwise))
+
+    companion object {
+        const val MIN_WIDTH_PERCENT = 0.2f
+        const val MAX_WIDTH_PERCENT = 15f
+        const val MIN_BLUR_PERCENT = 0.1f
+        const val MAX_BLUR_PERCENT = 5f
+    }
+}

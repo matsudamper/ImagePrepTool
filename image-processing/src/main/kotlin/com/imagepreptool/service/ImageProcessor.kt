@@ -32,8 +32,8 @@ class ImageProcessor(private val tools: ExternalTools) {
             val loaded = ImageLoader.load(item.source, tools)
             val rotatedSize = Rotator.rotatedSize(loaded.size, item.rotation)
             val target = Resizer.targetSize(Cropper.croppedSize(rotatedSize, item.crop), options)
-            val rotated = Rotator.rotate(loaded.image, item.rotation)
-            val rendered = render(Cropper.crop(rotated, item.crop), caption(item.source, options), options, target)
+            val painted = PenPainter.paint(Rotator.rotate(loaded.image, item.rotation), item.strokes)
+            val rendered = render(Cropper.crop(painted, item.crop), caption(item.source, options), options, target)
             // 同名確認で「上書き」が選ばれた項目だけ既存ファイルを置き換える
             ImageEncoder.write(rendered, item.format, options.quality, item.target, tools, replaceExisting = item.exists)
             ProcessResult(item.source, item.target, ProcessResult.Status.Success, "$target · ${item.format.label}")
