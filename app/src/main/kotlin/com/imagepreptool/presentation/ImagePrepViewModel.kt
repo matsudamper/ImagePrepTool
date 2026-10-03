@@ -186,6 +186,10 @@ class ImagePrepViewModel(
 
     private val lastProjectMutex = Mutex()
 
+    /** プロジェクトごとの、最後に付けた名前 */
+    private val latestNames = ConcurrentHashMap<Long, String>()
+    private val renameMutex = Mutex()
+
     /** 読み込み中のプロジェクト。読み込み中に削除されたら、読み込みを取り消す */
     @Volatile
     private var openingProjectId: Long? = null
@@ -380,8 +384,10 @@ class ImagePrepViewModel(
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
         mutate { it.copy(project = project.copy(name = trimmed)) }
+        latestNames[project.id] = trimmed
         launchWrite {
-            projectStore.renameProject(project.id, trimmed)
+            // 続けて名前を変えると書き込みの順序が入れ替わることがあるため、書く時点の最新の名前を書く
+            renameMutex.withLock { projectStore.renameProject(project.id, latestNames.getValue(project.id)) }
             refreshProjects()
         }
     }
