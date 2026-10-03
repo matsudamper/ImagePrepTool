@@ -478,6 +478,8 @@ class ImagePrepViewModel(
                 writes.forEach { it.join() }
                 closing.forEach { saveProject(it) }
                 saveProject(state)
+                // ホームへ戻った直後に閉じても、次回起動時に閉じたプロジェクトを開かないようにする
+                saveLastProject()
                 projectStore.savePenTool(state.penTool)
             }
         }
