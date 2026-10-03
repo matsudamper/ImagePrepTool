@@ -60,7 +60,12 @@ internal class RoomProjectStore(private val database: AppDatabase) : ProjectStor
     override suspend fun saveProject(id: Long, previous: ProjectContent?, current: ProjectContent) {
         val previousImages = previous?.images.orEmpty().withIndex().associateBy { it.value.file }
         val changedImages = current.images.withIndex().filter { previousImages[it.value.file] != it }
-        val changedStrokes = current.images.filter { image -> previousImages[image.file]?.value?.strokes.orEmpty() != image.strokes }
+        // 前回の内容が無いときは DB に何が残っているか分からないため、線が無い画像も書き直して消す
+        val changedStrokes = if (previous == null) {
+            current.images
+        } else {
+            current.images.filter { image -> previousImages[image.file]?.value?.strokes.orEmpty() != image.strokes }
+        }
         val deletedFiles = previousImages.keys - current.images.map { it.file }.toSet()
         val isStateChanged = previous == null || previous.copy(images = listOf()) != current.copy(images = listOf())
         val currentStamps = withContext(Dispatchers.IO) {
@@ -70,6 +75,11 @@ internal class RoomProjectStore(private val database: AppDatabase) : ProjectStor
             connection.immediateTransaction {
                 if (isStateChanged) dao.updateProjectState(current.toStateUpdate(id))
                 deletedFiles.forEach { dao.deleteImage(id, it.path) }
+                if (previous == null) {
+                    // DB に残っている、今の内容に無い画像を消す
+                    val currentPaths = current.images.map { it.file.path }.toSet()
+                    dao.images(id).filter { it.path !in currentPaths }.forEach { dao.deleteImage(id, it.path) }
+                }
                 val rows = changedImages.map { (position, image) ->
                     // 見つからない画像は、戻ってきたときに中身を照合できるよう前に保存した大きさと日時を残す
                     val stamp = currentStamps[image.file] ?: dao.image(id, image.file.path)?.let { FileStamp(it.fileSize, it.fileModifiedAtMillis) }

@@ -170,8 +170,11 @@ class ImagePrepViewModel(
     /** 保存と削除が入れ違って、消したプロジェクトに書き込まないようにする */
     private val saveMutex = Mutex()
 
-    /** 最後に保存したプロジェクトとその内容。次の保存では変わった部分だけを書く */
-    private var savedProject: Pair<Long, ProjectContent>? = null
+    /**
+     * プロジェクトごとの、最後に保存した内容。次の保存では変わった部分だけを書く。
+     * 切り替えをまたいでも、閉じたプロジェクトの保存が別のプロジェクトの内容と比べないようプロジェクトごとに持つ
+     */
+    private val savedContents = mutableMapOf<Long, ProjectContent>()
 
     /** 画像の追加が重なっても、プロジェクトを 2 つ作らないようにする */
     private val projectCreationMutex = Mutex()
@@ -229,7 +232,7 @@ class ImagePrepViewModel(
             val opened = viewModelStateFlow.updateAndGet { state ->
                 state.copy(project = OpenProject(id, name), isWorkspaceOpen = true).withExportSettings(exportSettings)
             }
-            saveMutex.withLock { savedProject = id to opened.toProjectContent() }
+            saveMutex.withLock { savedContents[id] = opened.toProjectContent() }
             saveLastProject()
         }
         refreshProjects()
@@ -276,7 +279,7 @@ class ImagePrepViewModel(
             return
         }
         val restored = runInterruptible(Dispatchers.IO) { restoreImages(stored) }
-        saveMutex.withLock { savedProject = id to stored.content }
+        saveMutex.withLock { savedContents[id] = stored.content }
         mutate { it.withoutProject().withProject(stored, restored) }
         projectStore.markOpened(id, System.currentTimeMillis())
         saveLastProject()
@@ -369,7 +372,7 @@ class ImagePrepViewModel(
         viewModelScope.launch {
             saveMutex.withLock {
                 projectStore.deleteProject(id)
-                if (savedProject?.first == id) savedProject = null
+                savedContents.remove(id)
             }
             refreshProjects()
         }
@@ -399,11 +402,11 @@ class ImagePrepViewModel(
         val result = withContext(Dispatchers.IO) {
             val content = state.toProjectContent()
             saveMutex.withLock {
-                val previous = savedProject?.takeIf { it.first == project.id }?.second
+                val previous = savedContents[project.id]
                 if (previous == content) return@withLock SaveResult.Unchanged
                 try {
                     projectStore.saveProject(project.id, previous, content)
-                    savedProject = project.id to content
+                    savedContents[project.id] = content
                     SaveResult.Saved
                 } catch (e: CancellationException) {
                     throw e

@@ -82,6 +82,21 @@ class RoomProjectStoreTest {
     }
 
     @Test
+    fun savingWithoutPreviousContentReplacesWhatIsStored() = runBlocking {
+        val id = store.createProject("p", exportSettings, nowMillis = 1)
+        val stroke = PenStroke(PenKind.Draw, listOf(PenPoint(0.5f, 0.5f)), 1f, 0xFFFFFFFF.toInt(), 1f)
+        val images = (1..2).map { ProjectImage(File(directory, "$it.jpg"), false, false, null, Rotation.None, listOf(stroke)) }
+        val first = ProjectContent(exportSettings, ImageSortOrder(ImageSortKey.Name, true), null, false, images)
+        store.saveProject(id, previous = null, current = first)
+
+        // 線を消し、画像を 1 枚外した内容を、前回の内容が分からない状態で保存する
+        val second = first.copy(images = listOf(images[0].copy(strokes = listOf())))
+        store.saveProject(id, previous = null, current = second)
+
+        assertEquals(second, store.loadProject(id)?.content)
+    }
+
+    @Test
     fun deletingProjectForgetsItAsLastOpened() = runBlocking {
         val id = store.createProject("p", exportSettings, nowMillis = 1)
         store.saveLastProjectId(id)
