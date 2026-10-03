@@ -175,6 +175,10 @@ class ImagePrepViewModel(
 
     /** 画像の追加が重なっても、プロジェクトを 2 つ作らないようにする */
     private val projectCreationMutex = Mutex()
+
+    /** 切り替えやホームへの移動で閉じたが、まだ保存し終えていないプロジェクト。直後に終了しても失わないよう終了時にも書き込む */
+    @Volatile
+    private var closingProject: ImagePrepViewModelState? = null
     private val previewCache = Collections.synchronizedMap(
         object : LinkedHashMap<String, PreviewSource>(8, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, PreviewSource>?) = size > 4
@@ -239,8 +243,9 @@ class ImagePrepViewModel(
         if (viewModelStateFlow.value.project?.id == id) return
         loadJob?.cancel()
         val closing = viewModelStateFlow.value
+        closingProject = closing
         loadJob = viewModelScope.launch {
-            saveProject(closing)
+            saveClosingProject(closing)
             openProject(id)
         }
     }
@@ -316,10 +321,11 @@ class ImagePrepViewModel(
         if (rejectWhileExporting()) return
         loadJob?.cancel()
         val closing = viewModelStateFlow.value
+        closingProject = closing
         // 作り終えるまでの間にホームが見えないよう、作業画面のまま空にする
         mutate { it.withoutProject().copy(isWorkspaceOpen = true) }
         loadJob = viewModelScope.launch {
-            saveProject(closing)
+            saveClosingProject(closing)
             ensureProject()
         }
     }
@@ -393,11 +399,18 @@ class ImagePrepViewModel(
         if (saved) refreshProjects()
     }
 
+    private suspend fun saveClosingProject(closing: ImagePrepViewModelState) {
+        saveProject(closing)
+        if (closingProject === closing) closingProject = null
+    }
+
     /** 終了の直前に、まだ保存していない変更を書き込む */
     private fun saveBeforeExit() {
         val state = viewModelStateFlow.value
+        val closing = closingProject
         runBlocking(Dispatchers.IO) {
             withTimeoutOrNull(EXIT_SAVE_TIMEOUT_MILLIS) {
+                if (closing != null) saveProject(closing)
                 saveProject(state)
                 projectStore.savePenTool(state.penTool)
             }
@@ -520,9 +533,10 @@ class ImagePrepViewModel(
         if (export is ExportState.Preparing || export is ExportState.Running || exportJob?.isActive == true) return
         loadJob?.cancel()
         val closing = viewModelStateFlow.value
+        closingProject = closing
         mutate { it.withoutProject() }
         viewModelScope.launch {
-            saveProject(closing)
+            saveClosingProject(closing)
             projectStore.saveLastProjectId(null)
             refreshProjects()
         }
