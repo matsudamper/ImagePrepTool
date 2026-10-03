@@ -303,6 +303,31 @@ class UiStateTest {
     }
 
     @Test
+    fun removedImageReplacedLosesEditsWhenAddedAgain() {
+        val directory = kotlin.io.path.createTempDirectory("imageprep-removed").toFile()
+        try {
+            val image = File(directory, "a.jpg").apply { writeBytes(ByteArray(10)) }
+            val stampWhenRemoved = FileStamp.of(image)
+            val state = ImagePrepViewModelState(
+                crops = mapOf(image to CropRect(0.1f, 0.1f, 0.9f, 0.9f)),
+                rotations = mapOf(image to Rotation.Clockwise90),
+                removedFiles = setOf(image),
+                detachedStamps = mapOf(image to stampWhenRemoved),
+            )
+
+            // 一覧から外している間に、同じ場所へ大きさの違う別の画像が置かれた
+            image.writeBytes(ByteArray(20))
+            val added = state.withAddedImages(listOf(image))
+
+            assertEquals(mapOf(), added.crops)
+            assertEquals(mapOf(), added.rotations)
+            assertEquals(listOf(image), added.images.map { it.file })
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun returnedImageKeepsEditsOnlyWhenUnchanged() {
         val directory = kotlin.io.path.createTempDirectory("imageprep-returned").toFile()
         try {
@@ -311,7 +336,7 @@ class UiStateTest {
             val crop = CropRect(0.1f, 0.1f, 0.9f, 0.9f)
             val state = ImagePrepViewModelState(
                 unavailableImages = listOf(same, replaced).map { ProjectImage(it, false, false, crop, Rotation.Clockwise90, listOf()) },
-                unavailableStamps = mapOf(
+                detachedStamps = mapOf(
                     same to FileStamp.of(same),
                     // 見つからなかった間に、同じ場所へ大きさの違う別の画像が置かれた
                     replaced to FileStamp(size = 999, modifiedAtMillis = replaced.lastModified()),
