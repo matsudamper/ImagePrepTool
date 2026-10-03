@@ -176,6 +176,9 @@ class ImagePrepViewModel(
      */
     private val savedContents = mutableMapOf<Long, ProjectContent>()
 
+    /** 名前の変更や削除など、作業内容とは別に DB へ書く処理。終了時に書き終わるのを待つ */
+    private val pendingWrites: MutableSet<Job> = ConcurrentHashMap.newKeySet()
+
     /** 画像の追加が重なっても、プロジェクトを 2 つ作らないようにする */
     private val projectCreationMutex = Mutex()
 
@@ -356,7 +359,7 @@ class ImagePrepViewModel(
         val trimmed = name.trim()
         if (trimmed.isEmpty()) return
         mutate { it.copy(project = project.copy(name = trimmed)) }
-        viewModelScope.launch {
+        launchWrite {
             projectStore.renameProject(project.id, trimmed)
             refreshProjects()
         }
@@ -369,13 +372,24 @@ class ImagePrepViewModel(
             loadJob?.cancel()
             mutate { it.withoutProject() }
         }
-        viewModelScope.launch {
+        // 消したプロジェクトに終了時の保存で書き込まないようにする
+        closingProjects.remove(id)
+        launchWrite {
             saveMutex.withLock {
                 projectStore.deleteProject(id)
                 savedContents.remove(id)
             }
             refreshProjects()
         }
+    }
+
+    /**
+     * 終了時に [saveBeforeExit] が UI スレッドを止めて待つため、UI スレッドに戻らずに書き終える
+     */
+    private fun launchWrite(block: suspend () -> Unit) {
+        val job = viewModelScope.launch(Dispatchers.IO) { block() }
+        pendingWrites += job
+        job.invokeOnCompletion { pendingWrites -= job }
     }
 
     /** 操作が落ち着いたところで、開いているプロジェクトと道具の設定を保存する */
@@ -441,8 +455,10 @@ class ImagePrepViewModel(
     private fun saveBeforeExit() {
         val state = viewModelStateFlow.value
         val closing = closingProjects.values.toList()
+        val writes = pendingWrites.toList()
         runBlocking(Dispatchers.IO) {
             withTimeoutOrNull(EXIT_SAVE_TIMEOUT_MILLIS) {
+                writes.forEach { it.join() }
                 closing.forEach { saveProject(it) }
                 saveProject(state)
                 projectStore.savePenTool(state.penTool)
