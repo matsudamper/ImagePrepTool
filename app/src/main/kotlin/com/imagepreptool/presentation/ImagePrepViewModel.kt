@@ -176,6 +176,8 @@ class ImagePrepViewModel(
     /** 画像の追加が重なっても、プロジェクトを 2 つ作らないようにする */
     private val projectCreationMutex = Mutex()
 
+    private val lastProjectMutex = Mutex()
+
     /**
      * 切り替えやホームへの移動で閉じたが、まだ保存し終えていないプロジェクト（プロジェクトごと）。
      * 直後に終了しても失わないよう終了時にも書き込む
@@ -228,9 +230,19 @@ class ImagePrepViewModel(
                 state.copy(project = OpenProject(id, name), isWorkspaceOpen = true).withExportSettings(exportSettings)
             }
             saveMutex.withLock { savedProject = id to opened.toProjectContent() }
-            projectStore.saveLastProjectId(id)
+            saveLastProject()
         }
         refreshProjects()
+    }
+
+    /**
+     * 次回起動時に開くプロジェクトとして、今開いているプロジェクトを記録する。
+     * 遷移が重なると古い遷移の書き込みが後から届くため、渡された値ではなくその時点の状態を書く
+     */
+    private suspend fun saveLastProject() {
+        lastProjectMutex.withLock {
+            projectStore.saveLastProjectId(viewModelStateFlow.value.project?.id)
+        }
     }
 
     private fun legacyExportSettings() = ExportSettings(
@@ -267,7 +279,7 @@ class ImagePrepViewModel(
         saveMutex.withLock { savedProject = id to stored.content }
         mutate { it.withoutProject().withProject(stored, restored) }
         projectStore.markOpened(id, System.currentTimeMillis())
-        projectStore.saveLastProjectId(id)
+        saveLastProject()
         loadFileDates(restored.available.filter { !it.removed }.map { it.file })
         refreshProjects()
         val message = buildList {
@@ -555,7 +567,7 @@ class ImagePrepViewModel(
         mutate { it.withoutProject() }
         viewModelScope.launch {
             saveClosingProject(closing)
-            projectStore.saveLastProjectId(null)
+            saveLastProject()
             refreshProjects()
         }
     }
