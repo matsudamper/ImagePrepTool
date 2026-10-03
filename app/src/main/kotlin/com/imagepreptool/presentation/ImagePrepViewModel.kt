@@ -271,7 +271,8 @@ class ImagePrepViewModel(
         loadFileDates(restored.available.filter { !it.removed }.map { it.file })
         refreshProjects()
         val message = buildList {
-            if (restored.missing.isNotEmpty()) add("${restored.missing.size} 枚の画像が見つかりません")
+            val missingCount = restored.missing.count { !it.removed }
+            if (missingCount > 0) add("$missingCount 枚の画像が見つかりません")
             if (restored.changedCount > 0) add("内容が変わった ${restored.changedCount} 枚の編集を取り消しました")
         }
         if (message.isNotEmpty()) messageChannel.send(SnackbarMessage(message.joinToString("・")))
@@ -279,7 +280,8 @@ class ImagePrepViewModel(
 
     /** 画像ファイルが残っているかと、保存した後に中身が変わっていないかを確かめる */
     private fun restoreImages(stored: StoredProject): RestoredImages {
-        val (available, missing) = stored.content.images.partition { it.removed || it.file.isFile }
+        // 一覧から外した画像も、同じ場所に別の画像が置かれたときに照合できるよう見つからないものとして扱う
+        val (available, missing) = stored.content.images.partition { it.file.isFile }
         val checked = available.map { it.withoutEditsIfChanged(stored.stamps[it.file]) }
         val missingFiles = missing.map { it.file }.toSet()
         return RestoredImages(
@@ -291,7 +293,6 @@ class ImagePrepViewModel(
     }
 
     private class RestoredImages(
-        /** 一覧から外した画像は、ファイルが無くても外したまま残す */
         val available: List<ProjectImage>,
         val missing: List<ProjectImage>,
         val missingStamps: Map<File, FileStamp>,
@@ -815,7 +816,7 @@ class ImagePrepViewModel(
                         outputDir = outputDir,
                         options = state.options,
                         // 書き出さない画像や一覧から削除した画像も元画像なので上書きしない
-                        protectedFiles = state.images.map { it.file } + state.removedFiles,
+                        protectedFiles = state.images.map { it.file } + state.removedFiles + state.unavailableImages.map { it.file },
                     ).map {
                         it.copy(
                             rotation = state.rotations[it.source] ?: Rotation.None,
