@@ -18,6 +18,7 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
@@ -184,6 +185,10 @@ class ImagePrepViewModel(
 
     private val lastProjectMutex = Mutex()
 
+    /** 読み込み中のプロジェクト。読み込み中に削除されたら、読み込みを取り消す */
+    @Volatile
+    private var openingProjectId: Long? = null
+
     /**
      * 切り替えやホームへの移動で閉じたが、まだ保存し終えていないプロジェクト（プロジェクトごと）。
      * 直後に終了しても失わないよう終了時にも書き込む
@@ -275,6 +280,15 @@ class ImagePrepViewModel(
         // 保存前の内容を読むと、その後の差分保存で直前の編集を上書きしてしまう
         val pending = closingProjects[id]
         if (pending != null && !saveClosingProject(pending)) return
+        openingProjectId = id
+        try {
+            openStoredProject(id)
+        } finally {
+            if (openingProjectId == id) openingProjectId = null
+        }
+    }
+
+    private suspend fun openStoredProject(id: Long) {
         val stored = projectStore.loadProject(id)
         if (stored == null) {
             messageChannel.send(SnackbarMessage("プロジェクトが見つかりません"))
@@ -283,6 +297,8 @@ class ImagePrepViewModel(
         }
         val restored = runInterruptible(Dispatchers.IO) { restoreImages(stored) }
         saveMutex.withLock { savedContents[id] = stored.content }
+        // 読み込み中に削除されていたら開かない
+        currentCoroutineContext().ensureActive()
         mutate { it.withoutProject().withProject(stored, restored) }
         projectStore.markOpened(id, System.currentTimeMillis())
         saveLastProject()
@@ -370,6 +386,8 @@ class ImagePrepViewModel(
         if (isCurrent) {
             loadJob?.cancel()
             mutate { it.withoutProject() }
+        } else if (openingProjectId == id) {
+            loadJob?.cancel()
         }
         // 消したプロジェクトに終了時の保存で書き込まないようにする
         closingProjects.remove(id)
