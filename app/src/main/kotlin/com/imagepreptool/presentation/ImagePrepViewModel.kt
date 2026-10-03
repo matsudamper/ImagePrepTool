@@ -792,7 +792,7 @@ class ImagePrepViewModel(
     private fun setCrop(file: File, crop: CropRect?) {
         mutate { state ->
             val edited = state.withEditStamp(file)
-            if (crop == null || crop.isFull) edited.copy(crops = state.crops - file) else edited.copy(crops = state.crops + (file to crop))
+            if (crop == null || crop.isFull) edited.copy(crops = edited.crops - file) else edited.copy(crops = edited.crops + (file to crop))
         }
     }
 
@@ -803,11 +803,12 @@ class ImagePrepViewModel(
         rotateCrop: (CropRect) -> CropRect,
         rotateStroke: (PenStroke) -> PenStroke,
     ) {
-        mutate { state ->
+        mutate { current ->
+            val state = current.withEditStamp(file)
             val rotation = rotateRotation(state.rotations[file] ?: Rotation.None)
             val crop = state.crops[file]
             val strokes = state.strokes[file]
-            state.withEditStamp(file).copy(
+            state.copy(
                 rotations = if (rotation == Rotation.None) state.rotations - file else state.rotations + (file to rotation),
                 crops = if (crop == null) state.crops else state.crops + (file to rotateCrop(crop)),
                 strokes = if (strokes == null) state.strokes else state.strokes + (file to strokes.map(rotateStroke)),
@@ -818,7 +819,10 @@ class ImagePrepViewModel(
     private fun setStrokes(file: File, strokes: List<PenStroke>) {
         mutate { state ->
             val edited = state.withEditStamp(file)
-            if (strokes.isEmpty()) edited.copy(strokes = state.strokes - file) else edited.copy(strokes = state.strokes + (file to strokes))
+            // 前の中身に向けた線を取り消したときは、画面から渡された一覧にも残っているので除く
+            val discarded = state.strokes[file].orEmpty().takeIf { edited.strokes[file] == null }.orEmpty()
+            val kept = strokes.filter { it !in discarded }
+            if (kept.isEmpty()) edited.copy(strokes = edited.strokes - file) else edited.copy(strokes = edited.strokes + (file to kept))
         }
     }
 
@@ -1257,9 +1261,17 @@ internal data class ImagePrepViewModelState(
     val exportSettings: ExportSettings
         get() = ExportSettings(options, outputPathMode, relativeOutputPath, selectedOutputDir)
 
-    /** [file] の編集が、今の中身に対するものであることを記録する */
-    fun withEditStamp(file: File): ImagePrepViewModelState =
-        if (file.isFile) copy(editStamps = editStamps + (file to FileStamp.of(file))) else this
+    /**
+     * [file] の編集が今の中身に対するものであることを記録する。
+     * 前に編集したときから外で差し替えられていたら、前の中身に向けた編集を取り消してから記録する
+     */
+    fun withEditStamp(file: File): ImagePrepViewModelState {
+        if (!file.isFile) return this
+        val current = FileStamp.of(file)
+        val previous = editStamps[file]
+        val base = if (previous != null && previous != current) copy(crops = crops - file, rotations = rotations - file, strokes = strokes - file) else this
+        return base.copy(editStamps = editStamps + (file to current))
+    }
 
     fun withExportSettings(settings: ExportSettings): ImagePrepViewModelState = copy(
         options = settings.options,
@@ -1312,8 +1324,13 @@ internal data class ImagePrepViewModelState(
         crops,
         rotations,
         strokes,
+        editStamps,
         sortOrder,
     )
+
+    /** 切り抜き・回転・ペンのいずれかがある画像 */
+    private val editedFiles: Set<File>
+        get() = crops.keys + rotations.keys + strokes.keys + unavailableImages.filter { it.hasEdits }.map { it.file }
 
     fun toProjectContent(): ProjectContent {
         val active = images.map { it.file }
@@ -1335,6 +1352,7 @@ internal data class ImagePrepViewModelState(
             images = active.map { imageOf(it, removed = false) } +
                 removedFiles.filter { it !in activeSet }.map { imageOf(it, removed = true) } +
                 unavailableImages,
+            editStamps = editStamps.filterKeys { it in editedFiles },
         )
     }
 }
@@ -1418,9 +1436,11 @@ internal fun ImagePrepViewModelState.toUiState(
 
 private val File.folder: File get() = absoluteFile.parentFile
 
+private val ProjectImage.hasEdits: Boolean
+    get() = crop != null || rotation != Rotation.None || strokes.isNotEmpty()
+
 /** 保存した後に中身が変わった画像なら、前の中身に向けた切り抜き・回転・ペンを取り消す */
 private fun ProjectImage.withoutEditsIfChanged(stamp: FileStamp?): ProjectImage {
-    val hasEdits = crop != null || rotation != Rotation.None || strokes.isNotEmpty()
     val isChanged = hasEdits && stamp != null && file.isFile && stamp != FileStamp.of(file)
     return if (isChanged) copy(crop = null, rotation = Rotation.None, strokes = listOf()) else this
 }

@@ -328,6 +328,27 @@ class UiStateTest {
     }
 
     @Test
+    fun editingReplacedImageDiscardsEditsForPreviousContent() {
+        val directory = kotlin.io.path.createTempDirectory("imageprep-edit").toFile()
+        try {
+            val image = File(directory, "a.jpg").apply { writeBytes(ByteArray(10)) }
+            val state = ImagePrepViewModelState(
+                crops = mapOf(image to CropRect(0.1f, 0.1f, 0.9f, 0.9f)),
+                editStamps = mapOf(image to FileStamp.of(image)),
+            )
+
+            // 切り抜いた後に外で差し替えられ、その後に回すなどの編集をした
+            image.writeBytes(ByteArray(20))
+            val edited = state.withEditStamp(image)
+
+            assertEquals(mapOf(), edited.crops)
+            assertEquals(FileStamp.of(image), edited.editStamps[image])
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun returnedImageKeepsEditsOnlyWhenUnchanged() {
         val directory = kotlin.io.path.createTempDirectory("imageprep-returned").toFile()
         try {

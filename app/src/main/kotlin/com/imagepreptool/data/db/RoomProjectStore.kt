@@ -18,6 +18,7 @@ import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.PenPoint
 import com.imagepreptool.model.PenStroke
 import com.imagepreptool.model.PenTool
+import com.imagepreptool.model.Rotation
 import com.imagepreptool.presentation.ImageSortKey
 import com.imagepreptool.presentation.ImageSortOrder
 
@@ -52,6 +53,9 @@ internal class RoomProjectStore(private val database: AppDatabase) : ProjectStor
             focusedFile = project.focusedPath?.let(::File),
             isSelectionMode = project.isSelectionMode,
             images = images.map { it.toModel(strokesByPath[it.path].orEmpty()) },
+            editStamps = images
+                .filter { it.cropLeft != null || it.rotation != Rotation.None || strokesByPath[it.path].orEmpty().isNotEmpty() }
+                .associate { File(it.path) to FileStamp(it.fileSize, it.fileModifiedAtMillis) },
         )
         val stamps = images.associate { File(it.path) to FileStamp(it.fileSize, it.fileModifiedAtMillis) }
         return StoredProject(id = project.id, name = project.name, content = content, stamps = stamps)
@@ -59,7 +63,10 @@ internal class RoomProjectStore(private val database: AppDatabase) : ProjectStor
 
     override suspend fun saveProject(id: Long, previous: ProjectContent?, current: ProjectContent) {
         val previousImages = previous?.images.orEmpty().withIndex().associateBy { it.value.file }
-        val changedImages = current.images.withIndex().filter { previousImages[it.value.file] != it }
+        val changedImages = current.images.withIndex().filter { indexed ->
+            val file = indexed.value.file
+            previousImages[file] != indexed || previous?.editStamps?.get(file) != current.editStamps[file]
+        }
         // 前回の内容が無いときは DB に何が残っているか分からないため、線が無い画像も書き直して消す
         val changedStrokes = if (previous == null) {
             current.images
@@ -83,15 +90,8 @@ internal class RoomProjectStore(private val database: AppDatabase) : ProjectStor
                 }
                 val rows = changedImages.map { (position, image) ->
                     val storedStamp = storedImages[image.file.path]?.let { FileStamp(it.fileSize, it.fileModifiedAtMillis) }
-                    // 大きさと日時は、編集したときの中身を表す。選択など編集と関係ない変更では更新せず、
-                    // 開いている間に外で差し替えられても、次に開いたときに照合できるようにする。
-                    // 見つからない画像も、戻ってきたときに照合できるよう前の値を残す
-                    val keepsStoredStamp = previous == null || previousImages[image.file]?.value?.hasSameEdits(image) == true
-                    val stamp = if (keepsStoredStamp) {
-                        storedStamp ?: currentStamps[image.file]
-                    } else {
-                        currentStamps[image.file] ?: storedStamp
-                    }
+                    // 編集した時点の値を優先する。編集の無い画像は、見つからない画像が戻ったときにも照合できるよう前の値を残す
+                    val stamp = current.editStamps[image.file] ?: storedStamp ?: currentStamps[image.file]
                     image.toEntity(id, position, stamp ?: FileStamp(0, 0))
                 }
                 if (rows.isNotEmpty()) dao.upsertImages(rows)
@@ -152,9 +152,6 @@ private fun ProjectContent.toStateUpdate(id: Long) = ProjectStateUpdate(
     focusedPath = focusedFile?.path,
     isSelectionMode = isSelectionMode,
 )
-
-private fun ProjectImage.hasSameEdits(other: ProjectImage): Boolean =
-    crop == other.crop && rotation == other.rotation && strokes == other.strokes
 
 private fun ProjectImage.toEntity(projectId: Long, position: Int, stamp: FileStamp) = ProjectImageEntity(
     projectId = projectId,

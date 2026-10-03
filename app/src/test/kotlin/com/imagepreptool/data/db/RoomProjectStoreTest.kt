@@ -56,6 +56,7 @@ class RoomProjectStoreTest {
                 ProjectImage(image, removed = false, selected = true, CropRect(0.1f, 0.1f, 0.9f, 0.8f), Rotation.Clockwise90, listOf(stroke)),
                 ProjectImage(File(directory, "b.jpg"), removed = true, selected = false, crop = null, rotation = Rotation.None, strokes = listOf()),
             ),
+            editStamps = mapOf(image to FileStamp.of(image)),
         )
 
         store.saveProject(id, previous = null, current = content)
@@ -70,11 +71,14 @@ class RoomProjectStoreTest {
     fun onlyChangedImagesAreRewritten() = runBlocking {
         val id = store.createProject("p", exportSettings, nowMillis = 1)
         val images = (1..3).map { ProjectImage(File(directory, "$it.jpg"), false, false, null, Rotation.None, listOf()) }
-        val first = ProjectContent(exportSettings, ImageSortOrder(ImageSortKey.Name, true), null, false, images)
+        val first = ProjectContent(exportSettings, ImageSortOrder(ImageSortKey.Name, true), null, false, images, editStamps = mapOf())
         store.saveProject(id, previous = null, current = first)
 
         val stroke = PenStroke(PenKind.Draw, listOf(PenPoint(0.5f, 0.5f)), 1f, 0xFFFFFFFF.toInt(), 1f)
-        val second = first.copy(images = listOf(images[0], images[2].copy(strokes = listOf(stroke))))
+        val second = first.copy(
+            images = listOf(images[0], images[2].copy(strokes = listOf(stroke))),
+            editStamps = mapOf(images[2].file to FileStamp(size = 1, modifiedAtMillis = 2)),
+        )
         store.saveProject(id, previous = first, current = second)
 
         assertEquals(second, store.loadProject(id)?.content)
@@ -86,27 +90,30 @@ class RoomProjectStoreTest {
         val id = store.createProject("p", exportSettings, nowMillis = 1)
         val stroke = PenStroke(PenKind.Draw, listOf(PenPoint(0.5f, 0.5f)), 1f, 0xFFFFFFFF.toInt(), 1f)
         val images = (1..2).map { ProjectImage(File(directory, "$it.jpg"), false, false, null, Rotation.None, listOf(stroke)) }
-        val first = ProjectContent(exportSettings, ImageSortOrder(ImageSortKey.Name, true), null, false, images)
+        val stamps = images.associate { it.file to FileStamp(size = 1, modifiedAtMillis = 2) }
+        val first = ProjectContent(exportSettings, ImageSortOrder(ImageSortKey.Name, true), null, false, images, stamps)
         store.saveProject(id, previous = null, current = first)
 
         // 線を消し、画像を 1 枚外した内容を、前回の内容が分からない状態で保存する
-        val second = first.copy(images = listOf(images[0].copy(strokes = listOf())))
+        val second = first.copy(images = listOf(images[0].copy(strokes = listOf())), editStamps = mapOf())
         store.saveProject(id, previous = null, current = second)
 
         assertEquals(second, store.loadProject(id)?.content)
     }
 
     @Test
-    fun stampIsKeptWhenOnlySelectionChanges() = runBlocking {
+    fun stampOfEditTimeIsSavedEvenIfFileChangedBeforeSaving() = runBlocking {
         val image = File(directory, "a.jpg").apply { writeBytes(ByteArray(10)) }
         val stampWhenEdited = FileStamp.of(image)
         val id = store.createProject("p", exportSettings, nowMillis = 1)
         val edited = ProjectImage(image, false, false, CropRect(0.1f, 0.1f, 0.9f, 0.9f), Rotation.None, listOf())
-        val first = ProjectContent(exportSettings, ImageSortOrder(ImageSortKey.Name, true), null, false, listOf(edited))
-        store.saveProject(id, previous = null, current = first)
-
-        // 開いている間に外で差し替えられた後、選択だけが変わった
+        val first = ProjectContent(exportSettings, ImageSortOrder(ImageSortKey.Name, true), null, false, listOf(edited), mapOf(image to stampWhenEdited))
+        // 編集した後、保存されるまでの間に外で差し替えられた
         image.writeBytes(ByteArray(20))
+        store.saveProject(id, previous = null, current = first)
+        assertEquals(stampWhenEdited, store.loadProject(id)?.stamps?.get(image))
+
+        // その後、選択だけが変わった
         val second = first.copy(images = listOf(edited.copy(selected = true)))
         store.saveProject(id, previous = first, current = second)
 

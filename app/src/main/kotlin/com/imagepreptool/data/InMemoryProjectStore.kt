@@ -1,6 +1,5 @@
 package com.imagepreptool.data
 
-import java.io.File
 import com.imagepreptool.model.PenTool
 import com.imagepreptool.presentation.ImageSortKey
 import com.imagepreptool.presentation.ImageSortOrder
@@ -28,6 +27,7 @@ class InMemoryProjectStore : ProjectStore {
             focusedFile = null,
             isSelectionMode = false,
             images = listOf(),
+            editStamps = mapOf(),
         )
         projects[id] = StoredProject(id, name, content, stamps = mapOf())
         lastOpened[id] = nowMillis
@@ -38,8 +38,7 @@ class InMemoryProjectStore : ProjectStore {
 
     override suspend fun saveProject(id: Long, previous: ProjectContent?, current: ProjectContent) {
         val project = projects[id] ?: return
-        val stamps = current.images.map { it.file }.filter(File::isFile).associateWith(FileStamp::of)
-        projects[id] = StoredProject(id, project.name, current, project.stamps + stamps)
+        projects[id] = StoredProject(id, project.name, current, project.stamps + current.editStamps)
     }
 
     override suspend fun markOpened(id: Long, nowMillis: Long) {

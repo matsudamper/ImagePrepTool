@@ -34,6 +34,11 @@ data class ProjectContent(
     val isSelectionMode: Boolean,
     /** 一覧に並ぶ画像を並び順に。続けて一覧から外した画像や見つからない画像も含む */
     val images: List<ProjectImage>,
+    /**
+     * 切り抜き・回転・ペンを編集したときの画像ファイルの大きさと日時。編集の無い画像は含めない。
+     * 保存した後に中身が変わっていないかの照合に使うため、保存した時点ではなく編集した時点の値を持つ
+     */
+    val editStamps: Map<File, FileStamp>,
 )
 
 data class ProjectImage(
