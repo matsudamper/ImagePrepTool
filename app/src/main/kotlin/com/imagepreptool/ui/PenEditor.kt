@@ -30,12 +30,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -76,6 +73,7 @@ import kotlin.math.min
 import com.imagepreptool.model.PenKind
 import com.imagepreptool.model.PenPoint
 import com.imagepreptool.model.PenStroke
+import com.imagepreptool.model.PenTool
 import com.imagepreptool.ui.components.SegmentedControl
 import com.imagepreptool.ui.theme.MonoNumberStyle
 
@@ -96,14 +94,12 @@ private val PenColors = listOf(
 internal fun PenEditor(
     bitmap: ImageBitmap,
     strokes: List<PenStroke>,
+    tool: PenTool,
     onStrokesChange: (List<PenStroke>) -> Unit,
+    onToolChange: (PenTool) -> Unit,
     onDone: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    var kind by rememberSaveable { mutableStateOf(PenKind.Draw) }
-    var widthPercent by rememberSaveable { mutableFloatStateOf(1.5f) }
-    var color by rememberSaveable { mutableIntStateOf(PenColors[2]) }
-    var blurPercent by rememberSaveable { mutableFloatStateOf(1.5f) }
     val history = remember { PenHistory() }
     val focusRequester = remember { FocusRequester() }
     val change = { next: List<PenStroke> ->
@@ -138,8 +134,8 @@ internal fun PenEditor(
                 ) {
                     SegmentedControl(
                         options = PenKind.entries,
-                        selected = kind,
-                        onSelect = { kind = it },
+                        selected = tool.kind,
+                        onSelect = { onToolChange(tool.copy(kind = it)) },
                         label = { it.label },
                         modifier = Modifier.width(150.dp),
                     )
@@ -156,17 +152,17 @@ internal fun PenEditor(
                 ) {
                     PenSlider(
                         label = "太さ",
-                        value = widthPercent,
+                        value = tool.widthPercent,
                         valueRange = PenStroke.MIN_WIDTH_PERCENT..PenStroke.MAX_WIDTH_PERCENT,
-                        onValueChange = { widthPercent = it },
+                        onValueChange = { onToolChange(tool.copy(widthPercent = it)) },
                     )
-                    when (kind) {
-                        PenKind.Draw -> ColorSwatches(selected = color, onSelect = { color = it })
+                    when (tool.kind) {
+                        PenKind.Draw -> ColorSwatches(selected = tool.color, onSelect = { onToolChange(tool.copy(color = it)) })
                         PenKind.Blur -> PenSlider(
                             label = "強さ",
-                            value = blurPercent,
+                            value = tool.blurPercent,
                             valueRange = PenStroke.MIN_BLUR_PERCENT..PenStroke.MAX_BLUR_PERCENT,
-                            onValueChange = { blurPercent = it },
+                            onValueChange = { onToolChange(tool.copy(blurPercent = it)) },
                         )
                     }
                 }
@@ -190,7 +186,7 @@ internal fun PenEditor(
                 PenOverlay(
                     bitmap = bitmap,
                     displaySize = displaySize,
-                    newStroke = { points -> PenStroke(kind, points, widthPercent, color, blurPercent) },
+                    newStroke = { points -> PenStroke(tool.kind, points, tool.widthPercent, tool.color, tool.blurPercent) },
                     onStrokeAdd = { stroke -> change(strokes + stroke) },
                     // ボタンなどにフォーカスが移った後も、描き始めれば Ctrl+Z が効くようにする
                     onPress = { focusRequester.requestFocus() },

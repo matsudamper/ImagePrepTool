@@ -6,7 +6,11 @@ import androidx.lifecycle.viewModelScope
 import java.awt.image.BufferedImage
 import java.io.File
 import java.io.IOException
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,18 +25,31 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import com.imagepreptool.data.ExportSettings
+import com.imagepreptool.data.FileStamp
 import com.imagepreptool.data.PreferencesSettingsStore
+import com.imagepreptool.data.ProjectContent
+import com.imagepreptool.data.ProjectImage
+import com.imagepreptool.data.ProjectStore
+import com.imagepreptool.data.ProjectSummary
 import com.imagepreptool.data.SettingsStore
+import com.imagepreptool.data.StoredProject
 import com.imagepreptool.model.CaptionField
 import com.imagepreptool.model.ConflictPolicy
 import com.imagepreptool.model.CropRect
@@ -42,7 +59,9 @@ import com.imagepreptool.model.FileDates
 import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.OutputPathMode
+import com.imagepreptool.model.PenKind
 import com.imagepreptool.model.PenStroke
+import com.imagepreptool.model.PenTool
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.model.Rotation
 import com.imagepreptool.service.CaptionRenderer
@@ -62,7 +81,12 @@ import com.imagepreptool.service.RelativeOutputPath
 import com.imagepreptool.service.Resizer
 import com.imagepreptool.service.Rotator
 
+/**
+ * @param initialFiles 起動引数で渡された画像やフォルダ。あれば前回のプロジェクトではなく新しいプロジェクトで開く
+ */
 class ImagePrepViewModel(
+    private val projectStore: ProjectStore,
+    initialFiles: List<File>,
     private val settings: SettingsStore = PreferencesSettingsStore(),
     private val checkTools: () -> ExternalTools = ExternalToolChecker::checkAll,
 ) : ViewModel() {
@@ -72,14 +96,14 @@ class ImagePrepViewModel(
             options = settings.loadOptions(),
             outputPathMode = settings.loadOutputPathMode(),
             relativeOutputPath = settings.loadRelativeOutputPath(),
-            recentFolders = settings.loadRecentFolders(),
         ),
     )
 
     private val listener = object : ImagePrepUiState.Listener {
         override fun openFolder(dir: File) = this@ImagePrepViewModel.openFolder(dir)
         override fun addFiles(files: List<File>) = this@ImagePrepViewModel.addFiles(files)
-        override fun forgetRecent(dir: File) = this@ImagePrepViewModel.forgetRecent(dir)
+        override fun createProject() = this@ImagePrepViewModel.createProject()
+        override fun renameProject(name: String) = this@ImagePrepViewModel.renameProject(name)
         override fun closeAll() = this@ImagePrepViewModel.closeAll()
         override fun clickImage(file: File, mode: SelectMode) = this@ImagePrepViewModel.clickImage(file, mode)
         override fun selectAll() = this@ImagePrepViewModel.selectAll()
@@ -101,6 +125,7 @@ class ImagePrepViewModel(
         override fun rotateCounterClockwise(file: File) =
             this@ImagePrepViewModel.rotate(file, Rotation::rotatedCounterClockwise, CropRect::rotatedCounterClockwise, PenStroke::rotatedCounterClockwise)
         override fun setStrokes(file: File, strokes: List<PenStroke>) = this@ImagePrepViewModel.setStrokes(file, strokes)
+        override fun setPenTool(tool: PenTool) = this@ImagePrepViewModel.setPenTool(tool)
         override fun chooseOutputDirectory(dir: File) = this@ImagePrepViewModel.chooseOutputDirectory(dir)
         override fun setOutputPathMode(mode: OutputPathMode) = this@ImagePrepViewModel.setOutputPathMode(mode)
         override fun setRelativeOutputPath(path: String) = this@ImagePrepViewModel.setRelativeOutputPath(path)
@@ -108,13 +133,25 @@ class ImagePrepViewModel(
         override fun resolveConflicts(policy: ConflictPolicy?) = this@ImagePrepViewModel.resolveConflicts(policy)
         override fun cancelExport() = this@ImagePrepViewModel.cancelExport()
         override fun dismissExport() = this@ImagePrepViewModel.dismissExport()
+        override fun saveBeforeExit() = this@ImagePrepViewModel.saveBeforeExit()
     }
 
+    /** プロジェクトごとに使い回し、一覧の項目が状態の更新のたびに変わったことにならないようにする */
+    private val projectListeners = ConcurrentHashMap<Long, ProjectItem.Listener>()
+
+    private fun projectListenerOf(summary: ProjectSummary): ProjectItem.Listener =
+        projectListeners.computeIfAbsent(summary.id) { id ->
+            object : ProjectItem.Listener {
+                override fun open() = switchProject(id)
+                override fun delete() = deleteProject(id)
+            }
+        }
+
     val uiStateFlow: StateFlow<ImagePrepUiState> =
-        MutableStateFlow(viewModelStateFlow.value.toUiState(listener)).also { uiStateFlow ->
+        MutableStateFlow(viewModelStateFlow.value.toUiState(listener, ::projectListenerOf)).also { uiStateFlow ->
             viewModelScope.launch {
                 viewModelStateFlow.collect { viewModelState ->
-                    uiStateFlow.value = viewModelState.toUiState(listener)
+                    uiStateFlow.value = viewModelState.toUiState(listener, ::projectListenerOf)
                 }
             }
         }.asStateFlow()
@@ -129,6 +166,15 @@ class ImagePrepViewModel(
     /** 読み込みを始めるたびに増やす。取り消された古い読み込みが新しい読み込み中表示を消さないようにする */
     private var loadGeneration = 0
     private var pendingExportSettings: Pair<EditOptions, ExternalTools?>? = null
+
+    /** 保存と削除が入れ違って、消したプロジェクトに書き込まないようにする */
+    private val saveMutex = Mutex()
+
+    /** 最後に保存したプロジェクトとその内容。次の保存では変わった部分だけを書く */
+    private var savedProject: Pair<Long, ProjectContent>? = null
+
+    /** 画像の追加が重なっても、プロジェクトを 2 つ作らないようにする */
+    private val projectCreationMutex = Mutex()
     private val previewCache = Collections.synchronizedMap(
         object : LinkedHashMap<String, PreviewSource>(8, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, PreviewSource>?) = size > 4
@@ -138,14 +184,227 @@ class ImagePrepViewModel(
     init {
         refreshTools()
         observePreview()
-        viewModelScope.launch {
-            viewModelStateFlow.map { it.options }.distinctUntilChanged().drop(1).collect(settings::saveOptions)
-        }
+        observeChangesToSave()
+        viewModelScope.launch { restore(initialFiles) }
     }
 
     private fun mutate(transform: (ImagePrepViewModelState) -> ImagePrepViewModelState) {
         viewModelStateFlow.update(transform)
     }
+
+    // region プロジェクト
+
+    private suspend fun restore(initialFiles: List<File>) {
+        projectStore.loadPenTool()?.let { tool -> mutate { it.copy(penTool = tool) } }
+        if (initialFiles.isNotEmpty()) {
+            addFiles(initialFiles)
+        } else {
+            projectStore.loadLastProjectId()?.let { openProject(it) }
+        }
+        refreshProjects()
+        mutate { it.copy(isRestoring = false) }
+    }
+
+    private suspend fun refreshProjects() {
+        val projects = projectStore.listProjects()
+        mutate { it.copy(projects = projects) }
+    }
+
+    /** 開いているプロジェクトが無ければ、最後に書き出した設定で新しく作って開く */
+    private suspend fun ensureProject() {
+        projectCreationMutex.withLock {
+            if (viewModelStateFlow.value.project != null) return
+            val exportSettings = projectStore.loadLastExportSettings() ?: legacyExportSettings()
+            val now = System.currentTimeMillis()
+            val name = DefaultProjectNameFormat.format(Instant.ofEpochMilli(now))
+            val id = projectStore.createProject(name, exportSettings, now)
+            val opened = viewModelStateFlow.updateAndGet { state ->
+                state.copy(project = OpenProject(id, name), isWorkspaceOpen = true).withExportSettings(exportSettings)
+            }
+            saveMutex.withLock { savedProject = id to opened.toProjectContent() }
+            projectStore.saveLastProjectId(id)
+        }
+        refreshProjects()
+    }
+
+    private fun legacyExportSettings() = ExportSettings(
+        options = settings.loadOptions(),
+        outputPathMode = settings.loadOutputPathMode(),
+        relativeOutputPath = settings.loadRelativeOutputPath(),
+        absoluteOutputDir = null,
+    )
+
+    private fun switchProject(id: Long) {
+        if (rejectWhileExporting()) return
+        if (viewModelStateFlow.value.project?.id == id) return
+        loadJob?.cancel()
+        val closing = viewModelStateFlow.value
+        loadJob = viewModelScope.launch {
+            saveProject(closing)
+            openProject(id)
+        }
+    }
+
+    private suspend fun openProject(id: Long) {
+        val stored = projectStore.loadProject(id)
+        if (stored == null) {
+            messageChannel.send(SnackbarMessage("プロジェクトが見つかりません"))
+            refreshProjects()
+            return
+        }
+        val restored = runInterruptible(Dispatchers.IO) { restoreImages(stored) }
+        saveMutex.withLock { savedProject = id to stored.content }
+        mutate { it.withoutProject().withProject(stored, restored) }
+        projectStore.markOpened(id, System.currentTimeMillis())
+        projectStore.saveLastProjectId(id)
+        loadFileDates(restored.available.filter { !it.removed }.map { it.file })
+        refreshProjects()
+        val message = buildList {
+            if (restored.missing.isNotEmpty()) add("${restored.missing.size} 枚の画像が見つかりません")
+            if (restored.changedCount > 0) add("内容が変わった ${restored.changedCount} 枚の編集を取り消しました")
+        }
+        if (message.isNotEmpty()) messageChannel.send(SnackbarMessage(message.joinToString("・")))
+    }
+
+    /** 画像ファイルが残っているかと、保存した後に中身が変わっていないかを確かめる */
+    private fun restoreImages(stored: StoredProject): RestoredImages {
+        val (available, missing) = stored.content.images.partition { it.removed || it.file.isFile }
+        val isChanged = { image: ProjectImage ->
+            val hasEdits = image.crop != null || image.rotation != Rotation.None || image.strokes.isNotEmpty()
+            val stamp = stored.stamps[image.file]
+            hasEdits && image.file.isFile && stamp != null && stamp != FileStamp.of(image.file)
+        }
+        val changed = available.filter(isChanged).toSet()
+        return RestoredImages(
+            available = available.map { image -> if (image in changed) image.copy(crop = null, rotation = Rotation.None, strokes = listOf()) else image },
+            missing = missing,
+            changedCount = changed.size,
+        )
+    }
+
+    private class RestoredImages(
+        /** 一覧から外した画像は、ファイルが無くても外したまま残す */
+        val available: List<ProjectImage>,
+        val missing: List<ProjectImage>,
+        val changedCount: Int,
+    )
+
+    private fun ImagePrepViewModelState.withProject(stored: StoredProject, restored: RestoredImages): ImagePrepViewModelState {
+        val content = stored.content
+        val active = restored.available.filter { !it.removed }.map { it.file }
+        val activeSet = active.toSet()
+        val selection = restored.available.filter { !it.removed && it.selected }.map { it.file }.toSet()
+        val focused = content.focusedFile?.takeIf { it in activeSet } ?: active.firstOrNull()
+        return copy(
+            project = OpenProject(stored.id, stored.name),
+            isWorkspaceOpen = true,
+            images = active.map(::ImageItem),
+            removedFiles = restored.available.filter { it.removed }.map { it.file }.toSet(),
+            unavailableImages = restored.missing,
+            focusedFile = focused,
+            selection = selection.ifEmpty { setOfNotNull(focused) },
+            anchor = focused,
+            isSelectionMode = content.isSelectionMode && selection.isNotEmpty(),
+            crops = restored.available.mapNotNull { image -> image.crop?.let { image.file to it } }.toMap(),
+            rotations = restored.available.filter { it.rotation != Rotation.None }.associate { it.file to it.rotation },
+            strokes = restored.available.filter { it.strokes.isNotEmpty() }.associate { it.file to it.strokes },
+            sortOrder = content.sortOrder,
+        ).withExportSettings(content.exportSettings)
+    }
+
+    private fun createProject() {
+        if (rejectWhileExporting()) return
+        loadJob?.cancel()
+        val closing = viewModelStateFlow.value
+        // 作り終えるまでの間にホームが見えないよう、作業画面のまま空にする
+        mutate { it.withoutProject().copy(isWorkspaceOpen = true) }
+        loadJob = viewModelScope.launch {
+            saveProject(closing)
+            ensureProject()
+        }
+    }
+
+    private fun renameProject(name: String) {
+        val project = viewModelStateFlow.value.project ?: return
+        val trimmed = name.trim()
+        if (trimmed.isEmpty()) return
+        mutate { it.copy(project = project.copy(name = trimmed)) }
+        viewModelScope.launch {
+            projectStore.renameProject(project.id, trimmed)
+            refreshProjects()
+        }
+    }
+
+    private fun deleteProject(id: Long) {
+        val isCurrent = viewModelStateFlow.value.project?.id == id
+        if (isCurrent && rejectWhileExporting()) return
+        if (isCurrent) {
+            loadJob?.cancel()
+            mutate { it.withoutProject() }
+        }
+        viewModelScope.launch {
+            saveMutex.withLock {
+                projectStore.deleteProject(id)
+                if (savedProject?.first == id) savedProject = null
+            }
+            refreshProjects()
+        }
+    }
+
+    /** 操作が落ち着いたところで、開いているプロジェクトと道具の設定を保存する */
+    private fun observeChangesToSave() {
+        viewModelScope.launch {
+            viewModelStateFlow
+                .map { it.savedFields() }
+                .distinctUntilChanged()
+                .debounce(SAVE_DELAY_MILLIS)
+                .collect { saveProject(viewModelStateFlow.value) }
+        }
+        viewModelScope.launch {
+            viewModelStateFlow.map { it.penTool }.distinctUntilChanged().drop(1).debounce(SAVE_DELAY_MILLIS).collect(projectStore::savePenTool)
+        }
+    }
+
+    /**
+     * 保存の完了まで UI スレッドを止めることがあるため、保存は UI スレッドに戻らずに済ませる。
+     * 戻る必要があると [saveBeforeExit] と待ち合って止まる
+     */
+    private suspend fun saveProject(state: ImagePrepViewModelState) {
+        val project = state.project ?: return
+        val saved = withContext(Dispatchers.IO) {
+            val content = state.toProjectContent()
+            saveMutex.withLock {
+                val previous = savedProject?.takeIf { it.first == project.id }?.second
+                if (previous == content) return@withLock false
+                try {
+                    projectStore.saveProject(project.id, previous, content)
+                    savedProject = project.id to content
+                    true
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    messageChannel.trySend(SnackbarMessage("作業内容を保存できませんでした（${e.message ?: e.javaClass.simpleName}）"))
+                    false
+                }
+            }
+        }
+        // プロジェクト一覧に出す画像の数を合わせる
+        if (saved) refreshProjects()
+    }
+
+    /** 終了の直前に、まだ保存していない変更を書き込む */
+    private fun saveBeforeExit() {
+        val state = viewModelStateFlow.value
+        runBlocking(Dispatchers.IO) {
+            withTimeoutOrNull(EXIT_SAVE_TIMEOUT_MILLIS) {
+                saveProject(state)
+                projectStore.savePenTool(state.penTool)
+            }
+        }
+    }
+
+    // endregion
 
     // region 画像の読み込み
 
@@ -165,11 +424,12 @@ class ImagePrepViewModel(
                 messageChannel.send(SnackbarMessage("「${dir.name}」に読み込める画像がありません"))
                 return@launch
             }
+            ensureProject()
             mutate { state ->
                 val existing = state.images.map { it.file.absoluteFile }.toSet()
                 val added = files.map { it.absoluteFile }.filter { it !in existing }
                 if (state.images.isEmpty()) {
-                    val loaded = state.copy(images = added.map(::ImageItem), isWorkspaceOpen = true)
+                    val loaded = state.withAddedImages(added)
                     val first = loaded.orderedImages.firstOrNull()?.file
                     loaded.copy(
                         focusedFile = first,
@@ -177,17 +437,12 @@ class ImagePrepViewModel(
                         anchor = first,
                         isSelectionMode = false,
                         lastRemoval = null,
-                        removedFiles = emptySet(),
                     )
                 } else {
-                    state.copy(
-                        images = (state.images + added.map(::ImageItem)).groupedByFolder(),
-                        lastRemoval = null,
-                    )
+                    state.withAddedImages(added).copy(lastRemoval = null)
                 }
             }
             loadFileDates(files.map { it.absoluteFile })
-            rememberRecent(dir)
         }
     }
 
@@ -213,12 +468,9 @@ class ImagePrepViewModel(
             val ignored = expanded.size - supported.size
             val existing = viewModelStateFlow.value.images.map { it.file.absoluteFile }.toSet()
             val added = supported.map { it.absoluteFile }.distinct().filter { it !in existing }
-            mutate { state ->
-                state.copy(
-                    images = (state.images + added.map(::ImageItem)).groupedByFolder(),
-                    isWorkspaceOpen = state.isWorkspaceOpen || added.isNotEmpty(),
-                    focusedFile = state.focusedFile ?: added.firstOrNull(),
-                )
+            if (added.isNotEmpty()) {
+                ensureProject()
+                mutate { state -> state.withAddedImages(added).copy(focusedFile = state.focusedFile ?: added.first()) }
             }
             loadFileDates(added)
             val message = buildList {
@@ -251,7 +503,7 @@ class ImagePrepViewModel(
         return busy
     }
 
-    internal fun snapshotForTest(): ImagePrepUiState = viewModelStateFlow.value.toUiState(listener)
+    internal fun snapshotForTest(): ImagePrepUiState = viewModelStateFlow.value.toUiState(listener, ::projectListenerOf)
 
     internal fun addFilesForTest(files: List<File>) {
         mutate { it.copy(images = files.map(::ImageItem), isWorkspaceOpen = true, focusedFile = files.firstOrNull()) }
@@ -261,27 +513,18 @@ class ImagePrepViewModel(
         mutate { it.copy(tools = tools) }
     }
 
+    /** ホームに戻る。プロジェクトは保存してあるので、一覧からまた開ける */
     private fun closeAll() {
         // 書き出しの準備中・実行中は閉じない（閉じた画像が書き出されるのを防ぐ）
         val export = viewModelStateFlow.value.export
         if (export is ExportState.Preparing || export is ExportState.Running || exportJob?.isActive == true) return
         loadJob?.cancel()
-        mutate {
-            it.copy(
-                images = emptyList(),
-                isWorkspaceOpen = false,
-                focusedFile = null,
-                selection = emptySet(),
-                anchor = null,
-                isSelectionMode = false,
-                export = ExportState.Idle,
-                lastRemoval = null,
-                removedFiles = emptySet(),
-                crops = mapOf(),
-                rotations = mapOf(),
-                strokes = mapOf(),
-                fileDates = mapOf(),
-            )
+        val closing = viewModelStateFlow.value
+        mutate { it.withoutProject() }
+        viewModelScope.launch {
+            saveProject(closing)
+            projectStore.saveLastProjectId(null)
+            refreshProjects()
         }
     }
 
@@ -368,16 +611,6 @@ class ImagePrepViewModel(
                 removedFiles = state.removedFiles - restoredFiles.toSet(),
             )
         }
-    }
-
-    private fun forgetRecent(dir: File) {
-        mutate { it.copy(recentFolders = it.recentFolders - dir) }
-        settings.saveRecentFolders(viewModelStateFlow.value.recentFolders)
-    }
-
-    private fun rememberRecent(dir: File) {
-        mutate { state -> state.copy(recentFolders = (listOf(dir) + state.recentFolders.filter { it != dir }).take(6)) }
-        settings.saveRecentFolders(viewModelStateFlow.value.recentFolders)
     }
 
     private fun listImages(dir: File): List<File> =
@@ -513,12 +746,14 @@ class ImagePrepViewModel(
 
     private fun setOutputPathMode(mode: OutputPathMode) {
         mutate { it.copy(outputPathMode = mode) }
-        settings.saveOutputPathMode(mode)
     }
 
     private fun setRelativeOutputPath(path: String) {
         mutate { it.copy(relativeOutputPath = path) }
-        settings.saveRelativeOutputPath(path)
+    }
+
+    private fun setPenTool(tool: PenTool) {
+        mutate { it.copy(penTool = tool) }
     }
 
     private fun refreshTools() {
@@ -535,7 +770,7 @@ class ImagePrepViewModel(
 
     private fun requestExport() {
         val state = viewModelStateFlow.value
-        val ui = state.toUiState(listener)
+        val ui = state.toUiState(listener, ::projectListenerOf)
         // 読み込み中に書き出すと、完了後に一覧が入れ替わり画面と違う画像を書き出してしまう
         if (!ui.canExport || loadJob?.isActive == true) return
         val outputDir = ui.outputDirectory ?: return
@@ -604,6 +839,8 @@ class ImagePrepViewModel(
 
     /** 書き出しは [options] と [tools]（要求した時点の値）で行い、準備中・実行中の設定変更は反映しない */
     private fun startExport(plan: List<PlannedOutput>, outputDir: File, options: EditOptions, tools: ExternalTools?) {
+        val exportSettings = viewModelStateFlow.value.exportSettings.copy(options = options)
+        viewModelScope.launch { projectStore.saveLastExportSettings(exportSettings) }
         val processor = ImageProcessor(tools ?: ExternalTools.None)
         val results = Collections.synchronizedList(mutableListOf<ProcessResult>())
         mutate { it.copy(export = ExportState.Running(done = 0, total = plan.size, currentName = plan.firstOrNull()?.source?.name, cancelling = false)) }
@@ -806,6 +1043,9 @@ class ImagePrepViewModel(
 
     companion object {
         private const val PREVIEW_MAX = 2000
+        private const val SAVE_DELAY_MILLIS = 300L
+        private const val EXIT_SAVE_TIMEOUT_MILLIS = 5000L
+        private val DefaultProjectNameFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm").withZone(ZoneId.systemDefault())
     }
 }
 
@@ -820,6 +1060,8 @@ private suspend fun <T> Flow<T>.collectLatestSafe(action: suspend (T) -> Unit) {
         }
     }
 }
+
+private val DefaultPenTool = PenTool(kind = PenKind.Draw, widthPercent = 1.5f, color = 0xFFE53935.toInt(), blurPercent = 1.5f)
 
 private val EmptyPreview = PreviewState(
     file = null,
@@ -837,7 +1079,15 @@ private val EmptyPreview = PreviewState(
     error = null,
 )
 
+/** 開いているプロジェクト */
+internal data class OpenProject(val id: Long, val name: String)
+
 internal data class ImagePrepViewModelState(
+    val project: OpenProject? = null,
+    /** プロジェクト一覧。最後に開いた順 */
+    val projects: List<ProjectSummary> = listOf(),
+    /** 起動時に前回のプロジェクトを開き終えるまで */
+    val isRestoring: Boolean = true,
     /** 同じフォルダの画像が続けて並ぶ（[groupedByFolder]）。フォルダ内は追加した順で、画面の並びは [orderedImages] */
     val images: List<ImageItem> = emptyList(),
     /** 一覧の画像をすべて削除してもホームに戻さないため、画像の有無とは別に持つ */
@@ -852,13 +1102,12 @@ internal data class ImagePrepViewModelState(
      */
     val isSelectionMode: Boolean = false,
     val options: EditOptions = EditOptions(),
-    /** 絶対パスで選んだ書き出し先。起動のたびに選び直してもらうため保存しない */
+    /** 絶対パスで選んだ書き出し先 */
     val selectedOutputDir: File? = null,
     val outputPathMode: OutputPathMode = OutputPathMode.Relative,
     /** [outputPathMode] が相対パスのときの、元画像のフォルダからのパス */
     val relativeOutputPath: String = RelativeOutputPath.DEFAULT,
     val tools: ExternalTools? = null,
-    val recentFolders: List<File> = emptyList(),
     val preview: PreviewState = EmptyPreview,
     val export: ExportState = ExportState.Idle,
     val isLoading: Boolean = false,
@@ -866,8 +1115,10 @@ internal data class ImagePrepViewModelState(
     val invalidInputs: Set<String> = setOf(),
     /** 元に戻せる直前の削除 */
     val lastRemoval: Removal? = null,
-    /** このフォルダを開いてから一覧から削除した画像。元画像なので書き出しで上書きしない */
+    /** このプロジェクトで一覧から削除した画像。元画像なので書き出しで上書きしない */
     val removedFiles: Set<File> = setOf(),
+    /** プロジェクトを開いたときに見つからなかった画像。一覧には出さず、ファイルが戻ったときのために保存だけしておく */
+    val unavailableImages: List<ProjectImage> = listOf(),
     /** 画像ごとの切り抜き範囲。切り抜かない画像は含めない */
     val crops: Map<File, CropRect> = mapOf(),
     /** 画像ごとの回転。回さない画像は含めない */
@@ -877,6 +1128,7 @@ internal data class ImagePrepViewModelState(
     val sortOrder: ImageSortOrder = ImageSortOrder(ImageSortKey.Name, ascending = true),
     /** 並べ替えに使う日時。読み込み中の画像は含まれない */
     val fileDates: Map<File, FileDates> = mapOf(),
+    val penTool: PenTool = DefaultPenTool,
 ) {
     class Removal(
         /** 削除した画像と、削除前の一覧での位置（昇順） */
@@ -914,9 +1166,86 @@ internal data class ImagePrepViewModelState(
     fun targetsFor(file: File): Set<File> = effectiveSelection.takeIf { file in it } ?: setOf(file)
 
     fun canRead(file: File, tools: ExternalTools): Boolean = !ImageLoader.isHeif(file) || tools.heifDecoder != null
+
+    val exportSettings: ExportSettings
+        get() = ExportSettings(options, outputPathMode, relativeOutputPath, selectedOutputDir)
+
+    fun withExportSettings(settings: ExportSettings): ImagePrepViewModelState = copy(
+        options = settings.options,
+        outputPathMode = settings.outputPathMode,
+        relativeOutputPath = settings.relativeOutputPath,
+        selectedOutputDir = settings.absoluteOutputDir,
+    )
+
+    /** 一覧に画像を加える。前に一覧から外した画像や見つからなかった画像なら、編集した内容を戻す */
+    fun withAddedImages(added: List<File>): ImagePrepViewModelState {
+        val addedSet = added.toSet()
+        val (returned, stillMissing) = unavailableImages.partition { it.file in addedSet }
+        return copy(
+            images = (images + added.map(::ImageItem)).groupedByFolder(),
+            isWorkspaceOpen = true,
+            removedFiles = removedFiles - addedSet,
+            unavailableImages = stillMissing,
+            crops = crops + returned.mapNotNull { image -> image.crop?.let { image.file to it } },
+            rotations = rotations + returned.filter { it.rotation != Rotation.None }.map { it.file to it.rotation },
+            strokes = strokes + returned.filter { it.strokes.isNotEmpty() }.map { it.file to it.strokes },
+        )
+    }
+
+    /** ホームに戻ったときの状態。道具の設定やプロジェクト一覧など、プロジェクトに属さないものは残す */
+    fun withoutProject(): ImagePrepViewModelState = ImagePrepViewModelState(
+        projects = projects,
+        isRestoring = isRestoring,
+        options = options,
+        tools = tools,
+        isLoading = isLoading,
+        penTool = penTool,
+    )
+
+    /** 保存する内容に関わる値。変わったかどうかを安く比べるため、まとめる前の値を並べる */
+    fun savedFields(): List<Any?> = listOf(
+        project?.id,
+        images,
+        removedFiles,
+        unavailableImages,
+        focusedFile,
+        selection,
+        isSelectionMode,
+        exportSettings,
+        crops,
+        rotations,
+        strokes,
+        sortOrder,
+    )
+
+    fun toProjectContent(): ProjectContent {
+        val active = images.map { it.file }
+        val activeSet = active.toSet()
+        val effectiveSelection = effectiveSelection
+        fun imageOf(file: File, removed: Boolean) = ProjectImage(
+            file = file,
+            removed = removed,
+            selected = !removed && file in effectiveSelection,
+            crop = crops[file],
+            rotation = rotations[file] ?: Rotation.None,
+            strokes = strokes[file].orEmpty(),
+        )
+        return ProjectContent(
+            exportSettings = exportSettings,
+            sortOrder = sortOrder,
+            focusedFile = focusedFile,
+            isSelectionMode = isSelectionMode,
+            images = active.map { imageOf(it, removed = false) } +
+                removedFiles.filter { it !in activeSet }.map { imageOf(it, removed = true) } +
+                unavailableImages,
+        )
+    }
 }
 
-internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listener): ImagePrepUiState {
+internal fun ImagePrepViewModelState.toUiState(
+    listener: ImagePrepUiState.Listener,
+    projectListenerOf: (ProjectSummary) -> ProjectItem.Listener,
+): ImagePrepUiState {
     val targets = exportTargets
     val outputDir = outputDir
     val notices = buildList {
@@ -956,6 +1285,17 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
     }
     val orderedImages = orderedImages
     return ImagePrepUiState(
+        projectName = project?.name,
+        projects = projects.map { summary ->
+            ProjectItem(
+                name = summary.name,
+                imageCount = summary.imageCount,
+                lastOpenedAtMillis = summary.lastOpenedAtMillis,
+                isCurrent = summary.id == project?.id,
+                listener = projectListenerOf(summary),
+            )
+        },
+        isRestoring = isRestoring,
         images = orderedImages,
         isWorkspaceOpen = isWorkspaceOpen,
         imageGroups = orderedImages.groupBy { it.file.folder }.map { (folder, items) -> ImageGroup(folder, items) },
@@ -970,8 +1310,8 @@ internal fun ImagePrepViewModelState.toUiState(listener: ImagePrepUiState.Listen
         outputPathMode = outputPathMode,
         relativeOutputPath = relativeOutputPath,
         tools = tools,
-        recentFolders = recentFolders,
         preview = preview.copy(crop = preview.file?.let(crops::get), strokes = preview.file?.let(strokes::get).orEmpty()),
+        penTool = penTool,
         export = export,
         notices = notices,
         isLoading = isLoading,

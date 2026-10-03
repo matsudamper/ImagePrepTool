@@ -5,6 +5,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import com.imagepreptool.data.InMemoryProjectStore
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.FileDates
@@ -14,6 +15,8 @@ import com.imagepreptool.model.OutputPathMode
 class UiStateTest {
 
     private val listener = ImagePrepViewModel(
+        projectStore = InMemoryProjectStore(),
+        initialFiles = listOf(),
         settings = com.imagepreptool.data.InMemorySettingsStore(),
         checkTools = { ExternalTools.None },
     ).snapshotForTest().listener
@@ -53,16 +56,16 @@ class UiStateTest {
             selection = setOf(File("/photos/a.jpg")),
             options = EditOptions(outputFormat = OutputFormat.Webp),
             tools = ExternalTools.None,
-        ).toUiState(listener)
+        ).toUiState(listener) { NoProjectListener }
         assertFalse(state.canExport)
         assertTrue(state.notices.any { it.blocking })
     }
 
     @Test
     fun toolDependentExportWaitsForToolCheck() {
-        val heic = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.heic"))), selection = setOf(File("/photos/a.heic")), tools = null).toUiState(listener)
+        val heic = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.heic"))), selection = setOf(File("/photos/a.heic")), tools = null).toUiState(listener) { NoProjectListener }
         assertFalse(heic.canExport)
-        val jpeg = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), selection = setOf(File("/photos/a.jpg")), tools = null).toUiState(listener)
+        val jpeg = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), selection = setOf(File("/photos/a.jpg")), tools = null).toUiState(listener) { NoProjectListener }
         assertTrue(jpeg.canExport)
     }
 
@@ -71,7 +74,7 @@ class UiStateTest {
         val state = ImagePrepViewModelState(
             images = listOf(ImageItem(File("/photos/a.jpg"))),
             invalidInputs = setOf("longEdge"),
-        ).toUiState(listener)
+        ).toUiState(listener) { NoProjectListener }
         assertFalse(state.canExport)
         assertTrue(state.notices.any { it.blocking })
     }
@@ -82,7 +85,7 @@ class UiStateTest {
             images = listOf(ImageItem(File("/photos/a.jpg"))),
             selection = setOf(File("/photos/a.jpg")),
             outputPathMode = OutputPathMode.Absolute,
-        ).toUiState(listener)
+        ).toUiState(listener) { NoProjectListener }
         assertEquals(null, unselected.outputDirectory)
         assertFalse(unselected.canExport)
         val selected = ImagePrepViewModelState(
@@ -90,20 +93,22 @@ class UiStateTest {
             selection = setOf(File("/photos/a.jpg")),
             outputPathMode = OutputPathMode.Absolute,
             selectedOutputDir = File("/export"),
-        ).toUiState(listener)
+        ).toUiState(listener) { NoProjectListener }
         assertEquals(File("/export"), selected.outputDirectory)
         assertTrue(selected.canExport)
     }
 
     @Test
     fun exportIsDisabledWhileLoading() {
-        val loading = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), isLoading = true).toUiState(listener)
+        val loading = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), isLoading = true).toUiState(listener) { NoProjectListener }
         assertFalse(loading.canExport)
     }
 
     @Test
     fun exportIsReservedBeforePlanning() {
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -120,6 +125,8 @@ class UiStateTest {
     @Test
     fun heicWithoutDecoderCanBeRemoved() {
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -138,6 +145,8 @@ class UiStateTest {
     fun actionsOnSelectedImageApplyToWholeSelection() {
         val files = (1..5).map { File("/photos/$it.jpg") }
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -166,6 +175,8 @@ class UiStateTest {
     fun removingUnreadableKeepsRemainingSelection() {
         val files = listOf("a.jpg", "b.heic", "c.jpg", "d.jpg", "e.heic").map { File("/photos/$it") }
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -185,6 +196,8 @@ class UiStateTest {
     fun selectionExportSurvivesRemovalDownToOneImage() {
         val files = listOf("a.jpg", "b.heic", "c.jpg").map { File("/photos/$it") }
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -210,6 +223,8 @@ class UiStateTest {
     fun shiftArrowExtendsSelectionFromAnchor() {
         val files = (1..5).map { File("/photos/$it.jpg") }
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -233,6 +248,8 @@ class UiStateTest {
     fun undoRestoresRemovedImagesAtOriginalPositions() {
         val files = (1..5).map { File("/photos/$it.jpg") }
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -256,7 +273,7 @@ class UiStateTest {
         val state = ImagePrepViewModelState(
             images = files.map(::ImageItem),
             selection = files.toSet(),
-        ).toUiState(listener)
+        ).toUiState(listener) { NoProjectListener }
         assertEquals(listOf(File("/trip"), File("/misc")), state.imageGroups.map { it.folder })
         assertEquals(listOf(2, 1), state.imageGroups.map { it.images.size })
         // 既定の出力先は先頭フォルダの output で、複数フォルダをまとめて書き出すことを知らせる
@@ -269,6 +286,8 @@ class UiStateTest {
     fun undoingFolderRemovalRestoresFolderGroup() {
         val files = listOf("/trip/1.jpg", "/trip/2.jpg", "/misc/1.jpg").map(::File)
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -278,4 +297,9 @@ class UiStateTest {
         vm.snapshotForTest().listener.undoRemoval()
         assertEquals(files, vm.snapshotForTest().images.map { it.file })
     }
+}
+
+private object NoProjectListener : ProjectItem.Listener {
+    override fun open() = Unit
+    override fun delete() = Unit
 }

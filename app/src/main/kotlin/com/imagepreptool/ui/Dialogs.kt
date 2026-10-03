@@ -16,21 +16,35 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -39,6 +53,7 @@ import com.imagepreptool.model.ConflictPolicy
 import com.imagepreptool.model.ExternalTool
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.presentation.ExportState
+import com.imagepreptool.presentation.ProjectItem
 import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_check_circle
 import com.imagepreptool.resources.ic_error
@@ -97,19 +112,56 @@ private fun AppDialog(
 }
 
 @Composable
-fun CloseConfirmDialog(onConfirm: () -> Unit, onCancel: () -> Unit, modifier: Modifier = Modifier) {
+fun RenameProjectDialog(
+    currentName: String,
+    onConfirm: (String) -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var name by remember { mutableStateOf(TextFieldValue(currentName, selection = TextRange(0, currentName.length))) }
+    val focusRequester = remember { FocusRequester() }
+    val canConfirm = name.text.isNotBlank()
+    AppDialog(
+        modifier = modifier,
+        onDismiss = onCancel,
+        title = "プロジェクト名を変更",
+        buttons = {
+            TextButton(onClick = onCancel) { Text("キャンセル") }
+            Button(onClick = { onConfirm(name.text) }, enabled = canConfirm) { Text("変更") }
+        },
+    ) {
+        OutlinedTextField(
+            value = name,
+            onValueChange = { name = it },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (canConfirm) onConfirm(name.text) }),
+            modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
+        )
+    }
+    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+}
+
+@Composable
+fun DeleteProjectDialog(project: ProjectItem, onConfirm: () -> Unit, onCancel: () -> Unit, modifier: Modifier = Modifier) {
     AppDialog(
         modifier = modifier,
         onDismiss = onCancel,
         icon = Res.drawable.ic_warning_amber,
         iconTint = AppTheme.extended.warning,
-        title = "ホームに戻りますか？",
+        title = "プロジェクトを削除しますか？",
         buttons = {
             TextButton(onClick = onCancel) { Text("キャンセル") }
-            Button(onClick = onConfirm) { Text("ホームに戻る") }
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error, contentColor = MaterialTheme.colorScheme.onError),
+            ) { Text("削除") }
         },
     ) {
-        Text("読み込んだ画像の一覧と選択状態は破棄されます（書き出し設定は保持されます）。", style = MaterialTheme.typography.bodyLarge)
+        Text(
+            "「${project.name}」の選定・編集・書き出し設定を削除します。元に戻せません。画像ファイルは削除されません。",
+            style = MaterialTheme.typography.bodyLarge,
+        )
     }
 }
 
