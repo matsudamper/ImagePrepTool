@@ -274,16 +274,13 @@ class ImagePrepViewModel(
     /** 画像ファイルが残っているかと、保存した後に中身が変わっていないかを確かめる */
     private fun restoreImages(stored: StoredProject): RestoredImages {
         val (available, missing) = stored.content.images.partition { it.removed || it.file.isFile }
-        val isChanged = { image: ProjectImage ->
-            val hasEdits = image.crop != null || image.rotation != Rotation.None || image.strokes.isNotEmpty()
-            val stamp = stored.stamps[image.file]
-            hasEdits && image.file.isFile && stamp != null && stamp != FileStamp.of(image.file)
-        }
-        val changed = available.filter(isChanged).toSet()
+        val checked = available.map { it.withoutEditsIfChanged(stored.stamps[it.file]) }
+        val missingFiles = missing.map { it.file }.toSet()
         return RestoredImages(
-            available = available.map { image -> if (image in changed) image.copy(crop = null, rotation = Rotation.None, strokes = listOf()) else image },
+            available = checked,
             missing = missing,
-            changedCount = changed.size,
+            missingStamps = stored.stamps.filterKeys { it in missingFiles },
+            changedCount = checked.zip(available).count { (after, before) -> after != before },
         )
     }
 
@@ -291,6 +288,7 @@ class ImagePrepViewModel(
         /** 一覧から外した画像は、ファイルが無くても外したまま残す */
         val available: List<ProjectImage>,
         val missing: List<ProjectImage>,
+        val missingStamps: Map<File, FileStamp>,
         val changedCount: Int,
     )
 
@@ -306,6 +304,7 @@ class ImagePrepViewModel(
             images = active.map(::ImageItem),
             removedFiles = restored.available.filter { it.removed }.map { it.file }.toSet(),
             unavailableImages = restored.missing,
+            unavailableStamps = restored.missingStamps,
             focusedFile = focused,
             selection = selection.ifEmpty { setOfNotNull(focused) },
             anchor = focused,
@@ -1133,6 +1132,8 @@ internal data class ImagePrepViewModelState(
     val removedFiles: Set<File> = setOf(),
     /** プロジェクトを開いたときに見つからなかった画像。一覧には出さず、ファイルが戻ったときのために保存だけしておく */
     val unavailableImages: List<ProjectImage> = listOf(),
+    /** [unavailableImages] を保存したときの大きさと日時。ファイルが戻ったときに中身が同じかを確かめる */
+    val unavailableStamps: Map<File, FileStamp> = mapOf(),
     /** 画像ごとの切り抜き範囲。切り抜かない画像は含めない */
     val crops: Map<File, CropRect> = mapOf(),
     /** 画像ごとの回転。回さない画像は含めない */
@@ -1194,12 +1195,15 @@ internal data class ImagePrepViewModelState(
     /** 一覧に画像を加える。前に一覧から外した画像や見つからなかった画像なら、編集した内容を戻す */
     fun withAddedImages(added: List<File>): ImagePrepViewModelState {
         val addedSet = added.toSet()
-        val (returned, stillMissing) = unavailableImages.partition { it.file in addedSet }
+        val (missingReturned, stillMissing) = unavailableImages.partition { it.file in addedSet }
+        // 同じ場所に別の画像を置いた場合、前の画像に向けた編集は当てはまらない
+        val returned = missingReturned.map { it.withoutEditsIfChanged(unavailableStamps[it.file]) }
         return copy(
             images = (images + added.map(::ImageItem)).groupedByFolder(),
             isWorkspaceOpen = true,
             removedFiles = removedFiles - addedSet,
             unavailableImages = stillMissing,
+            unavailableStamps = unavailableStamps - addedSet,
             crops = crops + returned.mapNotNull { image -> image.crop?.let { image.file to it } },
             rotations = rotations + returned.filter { it.rotation != Rotation.None }.map { it.file to it.rotation },
             strokes = strokes + returned.filter { it.strokes.isNotEmpty() }.map { it.file to it.strokes },
@@ -1334,6 +1338,13 @@ internal fun ImagePrepViewModelState.toUiState(
 }
 
 private val File.folder: File get() = absoluteFile.parentFile
+
+/** 保存した後に中身が変わった画像なら、前の中身に向けた切り抜き・回転・ペンを取り消す */
+private fun ProjectImage.withoutEditsIfChanged(stamp: FileStamp?): ProjectImage {
+    val hasEdits = crop != null || rotation != Rotation.None || strokes.isNotEmpty()
+    val isChanged = hasEdits && stamp != null && file.isFile && stamp != FileStamp.of(file)
+    return if (isChanged) copy(crop = null, rotation = Rotation.None, strokes = listOf()) else this
+}
 
 /** フォルダが最初に現れた順にまとめ、フォルダ内の並びは保つ */
 private fun List<ImageItem>.groupedByFolder(): List<ImageItem> = groupBy { it.file.folder }.values.flatten()

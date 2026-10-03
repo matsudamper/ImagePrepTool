@@ -5,12 +5,16 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import com.imagepreptool.data.FileStamp
 import com.imagepreptool.data.InMemoryProjectStore
+import com.imagepreptool.data.ProjectImage
+import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.FileDates
 import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.OutputPathMode
+import com.imagepreptool.model.Rotation
 
 class UiStateTest {
 
@@ -296,6 +300,30 @@ class UiStateTest {
         assertEquals(listOf(files[2]), vm.snapshotForTest().images.map { it.file })
         vm.snapshotForTest().listener.undoRemoval()
         assertEquals(files, vm.snapshotForTest().images.map { it.file })
+    }
+
+    @Test
+    fun returnedImageKeepsEditsOnlyWhenUnchanged() {
+        val directory = kotlin.io.path.createTempDirectory("imageprep-returned").toFile()
+        try {
+            val same = File(directory, "same.jpg").apply { writeBytes(ByteArray(10)) }
+            val replaced = File(directory, "replaced.jpg").apply { writeBytes(ByteArray(20)) }
+            val crop = CropRect(0.1f, 0.1f, 0.9f, 0.9f)
+            val state = ImagePrepViewModelState(
+                unavailableImages = listOf(same, replaced).map { ProjectImage(it, false, false, crop, Rotation.Clockwise90, listOf()) },
+                unavailableStamps = mapOf(
+                    same to FileStamp.of(same),
+                    // 見つからなかった間に、同じ場所へ大きさの違う別の画像が置かれた
+                    replaced to FileStamp(size = 999, modifiedAtMillis = replaced.lastModified()),
+                ),
+            ).withAddedImages(listOf(same, replaced))
+
+            assertEquals(mapOf(same to crop), state.crops)
+            assertEquals(mapOf(same to Rotation.Clockwise90), state.rotations)
+            assertTrue(state.unavailableImages.isEmpty())
+        } finally {
+            directory.deleteRecursively()
+        }
     }
 }
 
