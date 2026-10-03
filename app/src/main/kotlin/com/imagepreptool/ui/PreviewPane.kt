@@ -71,7 +71,9 @@ import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
+import com.imagepreptool.model.PenKind
 import com.imagepreptool.model.PenStroke
+import com.imagepreptool.model.PenTool
 import com.imagepreptool.presentation.ImageItem
 import com.imagepreptool.presentation.PreviewState
 import com.imagepreptool.resources.Res
@@ -107,11 +109,13 @@ fun PreviewPane(
     index: Int,
     total: Int,
     options: EditOptions,
+    penTool: PenTool,
     onMove: (Int) -> Unit,
     onCropChange: (File, CropRect?) -> Unit,
     onRotateClockwise: (File) -> Unit,
     onRotateCounterClockwise: (File) -> Unit,
     onStrokesChange: (File, List<PenStroke>) -> Unit,
+    onPenToolChange: (PenTool) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val zoom = remember(preview.file) { PreviewZoomState(initialScale = PreviewZoomState.MIN_SCALE, initialOffset = Offset.Zero) }
@@ -121,12 +125,14 @@ fun PreviewPane(
         index = index,
         total = total,
         options = options,
+        penTool = penTool,
         zoom = zoom,
         onMove = onMove,
         onCropChange = { crop -> preview.file?.let { onCropChange(it, crop) } },
         onRotateClockwise = { preview.file?.let(onRotateClockwise) },
         onRotateCounterClockwise = { preview.file?.let(onRotateCounterClockwise) },
         onStrokesChange = { strokes -> preview.file?.let { onStrokesChange(it, strokes) } },
+        onPenToolChange = onPenToolChange,
         modifier = modifier,
     )
 }
@@ -138,12 +144,14 @@ private fun PreviewPaneContent(
     index: Int,
     total: Int,
     options: EditOptions,
+    penTool: PenTool,
     zoom: PreviewZoomState,
     onMove: (Int) -> Unit,
     onCropChange: (CropRect?) -> Unit,
     onRotateClockwise: () -> Unit,
     onRotateCounterClockwise: () -> Unit,
     onStrokesChange: (List<PenStroke>) -> Unit,
+    onPenToolChange: (PenTool) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val ext = AppTheme.extended
@@ -220,7 +228,9 @@ private fun PreviewPaneContent(
                     PenEditor(
                         bitmap = bitmap,
                         strokes = preview.strokes,
+                        tool = penTool,
                         onStrokesChange = onStrokesChange,
+                        onToolChange = onPenToolChange,
                         onDone = { openEditor = PreviewEditor.None },
                     )
                 }
@@ -537,12 +547,14 @@ private fun PreviewPaneForPreview(zoom: PreviewZoomState) {
                 index = 0,
                 total = 3,
                 options = EditOptions(),
+                penTool = PenTool(kind = PenKind.Draw, widthPercent = 1.5f, color = 0xFFE53935.toInt(), blurPercent = 1.5f),
                 zoom = zoom,
                 onMove = {},
                 onCropChange = {},
                 onRotateClockwise = {},
                 onRotateCounterClockwise = {},
                 onStrokesChange = {},
+                onPenToolChange = {},
             )
         }
     }
