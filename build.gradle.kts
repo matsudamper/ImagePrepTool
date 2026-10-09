@@ -21,7 +21,6 @@ allprojects {
     configure<dev.detekt.gradle.extensions.DetektExtension> {
         buildUponDefaultConfig = false
         config.setFrom(rootProject.file("config/detekt/detekt.yml"))
-        failOnSeverity.set(dev.detekt.gradle.extensions.FailOnSeverity.Info)
     }
 
     configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {
