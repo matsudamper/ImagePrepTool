@@ -186,14 +186,14 @@ fun SlantedToggle(
             .clip(MaterialTheme.shapes.small)
             .background(trackColor)
             .hoverable(interaction)
+            .padding(3.dp)
+            .clip(RoundedCornerShape(6.dp))
             .clickable(
                 interactionSource = interaction,
                 indication = null,
                 role = Role.Switch,
                 onClick = onToggle,
             )
-            .padding(3.dp)
-            .clip(RoundedCornerShape(6.dp))
             .drawBehind {
                 val slantHalf = 7.dp.toPx()
                 val center = size.width / 2
