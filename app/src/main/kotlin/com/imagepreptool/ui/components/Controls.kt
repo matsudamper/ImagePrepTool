@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -180,48 +181,56 @@ fun SlantedToggle(
     val trackColor by animateColorAsState(if (hovered) colors.surfaceContainerHighest else colors.surfaceContainerHigh)
     val selectedColor = colors.surface
     val selectedBorderColor = colors.outlineVariant
-    Row(
+    Box(
         modifier = modifier
             .height(34.dp)
             .clip(MaterialTheme.shapes.small)
             .background(trackColor)
             .hoverable(interaction)
-            .padding(3.dp)
-            .clip(RoundedCornerShape(6.dp))
             .clickable(
                 interactionSource = interaction,
                 indication = null,
                 role = Role.Switch,
                 onClick = onToggle,
-            )
-            .drawBehind {
-                val slantHalf = 7.dp.toPx()
-                val center = size.width / 2
-                val leftTop = lerp(0f, center + slantHalf, selectedPosition)
-                val leftBottom = lerp(0f, center - slantHalf, selectedPosition)
-                val rightTop = lerp(center + slantHalf, size.width, selectedPosition)
-                val rightBottom = lerp(center - slantHalf, size.width, selectedPosition)
-                val selectedArea = Path().apply {
-                    moveTo(leftTop, 0f)
-                    lineTo(rightTop, 0f)
-                    lineTo(rightBottom, size.height)
-                    lineTo(leftBottom, size.height)
-                    close()
-                }
-                drawPath(selectedArea, selectedColor)
-                drawPath(selectedArea, selectedBorderColor, style = Stroke(width = 1.dp.toPx()))
-            },
-        verticalAlignment = Alignment.CenterVertically,
+            ),
     ) {
-        listOf(firstLabel to !isSecondSelected, secondLabel to isSecondSelected).forEach { (label, isSelected) ->
-            Text(
-                label,
-                style = MaterialTheme.typography.labelLarge,
-                color = if (isSelected) colors.onSurface else colors.onSurfaceVariant,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                modifier = Modifier.weight(1f),
-            )
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(3.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .drawBehind {
+                    val slantHalf = 7.dp.toPx()
+                    val center = size.width / 2
+                    val leftTop = lerp(0f, center + slantHalf, selectedPosition)
+                    val leftBottom = lerp(0f, center - slantHalf, selectedPosition)
+                    val rightTop = lerp(center + slantHalf, size.width, selectedPosition)
+                    val rightBottom = lerp(center - slantHalf, size.width, selectedPosition)
+                    val selectedArea = Path().apply {
+                        moveTo(leftTop, 0f)
+                        lineTo(rightTop, 0f)
+                        lineTo(rightBottom, size.height)
+                        lineTo(leftBottom, size.height)
+                        close()
+                    }
+                    drawPath(selectedArea, selectedColor)
+                    drawPath(selectedArea, selectedBorderColor, style = Stroke(width = 1.dp.toPx()))
+                },
+        )
+        Row(
+            Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            listOf(firstLabel to !isSecondSelected, secondLabel to isSecondSelected).forEach { (label, isSelected) ->
+                Text(
+                    label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (isSelected) colors.onSurface else colors.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    modifier = Modifier.weight(1f),
+                )
+            }
         }
     }
 }
