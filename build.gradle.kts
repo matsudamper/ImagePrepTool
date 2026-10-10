@@ -15,7 +15,7 @@ allprojects {
     apply(plugin = "dev.detekt")
 
     dependencies {
-        "detektPlugins"("io.nlopez.compose.rules:detekt:0.6.7")
+        "detektPlugins"("io.nlopez.compose.rules:detekt:0.6.8")
     }
 
     configure<dev.detekt.gradle.extensions.DetektExtension> {
