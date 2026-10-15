@@ -12,6 +12,7 @@ import com.imagepreptool.model.ImageSize
 import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.OutputPathMode
 import com.imagepreptool.model.PenStroke
+import com.imagepreptool.model.PenTool
 import com.imagepreptool.model.ProcessResult
 import com.imagepreptool.service.PlannedOutput
 
@@ -105,7 +106,28 @@ data class Notice(
     val action: NoticeAction?,
 )
 
+data class ProjectItem(
+    val name: String,
+    /** 一覧から外していない画像の数 */
+    val imageCount: Int,
+    val lastOpenedAtMillis: Long,
+    val isCurrent: Boolean,
+    val listener: Listener,
+) {
+    @Stable
+    interface Listener {
+        fun open()
+        fun delete()
+    }
+}
+
 data class ImagePrepUiState(
+    /** 開いているプロジェクトの名前。ホームでは null */
+    val projectName: String?,
+    /** 最後に開いた順 */
+    val projects: List<ProjectItem>,
+    /** 前回のプロジェクトを開いている間。ホームを一瞬表示しないようにする */
+    val isRestoring: Boolean,
     val images: List<ImageItem>,
     val isWorkspaceOpen: Boolean,
     /** [images] をフォルダごとに区切ったもの。並び順は [images] と同じ */
@@ -124,8 +146,8 @@ data class ImagePrepUiState(
     val outputPathMode: OutputPathMode,
     val relativeOutputPath: String,
     val tools: ExternalTools?,
-    val recentFolders: List<File>,
     val preview: PreviewState,
+    val penTool: PenTool,
     val export: ExportState,
     val notices: List<Notice>,
     val isLoading: Boolean,
@@ -142,7 +164,8 @@ data class ImagePrepUiState(
     interface Listener {
         fun openFolder(dir: File)
         fun addFiles(files: List<File>)
-        fun forgetRecent(dir: File)
+        fun createProject()
+        fun renameProject(name: String)
         fun closeAll()
         fun clickImage(file: File, mode: SelectMode)
         fun selectAll()
@@ -162,6 +185,7 @@ data class ImagePrepUiState(
         fun rotateClockwise(file: File)
         fun rotateCounterClockwise(file: File)
         fun setStrokes(file: File, strokes: List<PenStroke>)
+        fun setPenTool(tool: PenTool)
         fun chooseOutputDirectory(dir: File)
         fun setOutputPathMode(mode: OutputPathMode)
         fun setRelativeOutputPath(path: String)
@@ -169,5 +193,8 @@ data class ImagePrepUiState(
         fun resolveConflicts(policy: ConflictPolicy?)
         fun cancelExport()
         fun dismissExport()
+
+        /** 終了の直前に呼ぶ。まだ保存していない変更を書き込み終えるまで戻らない */
+        fun saveBeforeExit()
     }
 }

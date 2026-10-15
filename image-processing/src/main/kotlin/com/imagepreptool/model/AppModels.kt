@@ -216,3 +216,12 @@ data class PenStroke(
         const val MAX_BLUR_PERCENT = 5f
     }
 }
+
+/** ペン編集で次に描く線の設定。画像ではなく道具の好みなので、プロジェクトをまたいで引き継ぐ */
+data class PenTool(
+    val kind: PenKind,
+    val widthPercent: Float,
+    /** ARGB */
+    val color: Int,
+    val blurPercent: Float,
+)

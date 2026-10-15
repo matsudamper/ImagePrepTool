@@ -5,15 +5,22 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import com.imagepreptool.data.FileStamp
+import com.imagepreptool.data.InMemoryProjectStore
+import com.imagepreptool.data.ProjectImage
+import com.imagepreptool.model.CropRect
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.ExternalTools
 import com.imagepreptool.model.FileDates
 import com.imagepreptool.model.OutputFormat
 import com.imagepreptool.model.OutputPathMode
+import com.imagepreptool.model.Rotation
 
 class UiStateTest {
 
     private val listener = ImagePrepViewModel(
+        projectStore = InMemoryProjectStore(),
+        initialFiles = listOf(),
         settings = com.imagepreptool.data.InMemorySettingsStore(),
         checkTools = { ExternalTools.None },
     ).snapshotForTest().listener
@@ -53,16 +60,16 @@ class UiStateTest {
             selection = setOf(File("/photos/a.jpg")),
             options = EditOptions(outputFormat = OutputFormat.Webp),
             tools = ExternalTools.None,
-        ).toUiState(listener)
+        ).toUiState(listener) { NoProjectListener }
         assertFalse(state.canExport)
         assertTrue(state.notices.any { it.blocking })
     }
 
     @Test
     fun toolDependentExportWaitsForToolCheck() {
-        val heic = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.heic"))), selection = setOf(File("/photos/a.heic")), tools = null).toUiState(listener)
+        val heic = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.heic"))), selection = setOf(File("/photos/a.heic")), tools = null).toUiState(listener) { NoProjectListener }
         assertFalse(heic.canExport)
-        val jpeg = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), selection = setOf(File("/photos/a.jpg")), tools = null).toUiState(listener)
+        val jpeg = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), selection = setOf(File("/photos/a.jpg")), tools = null).toUiState(listener) { NoProjectListener }
         assertTrue(jpeg.canExport)
     }
 
@@ -71,7 +78,7 @@ class UiStateTest {
         val state = ImagePrepViewModelState(
             images = listOf(ImageItem(File("/photos/a.jpg"))),
             invalidInputs = setOf("longEdge"),
-        ).toUiState(listener)
+        ).toUiState(listener) { NoProjectListener }
         assertFalse(state.canExport)
         assertTrue(state.notices.any { it.blocking })
     }
@@ -82,7 +89,7 @@ class UiStateTest {
             images = listOf(ImageItem(File("/photos/a.jpg"))),
             selection = setOf(File("/photos/a.jpg")),
             outputPathMode = OutputPathMode.Absolute,
-        ).toUiState(listener)
+        ).toUiState(listener) { NoProjectListener }
         assertEquals(null, unselected.outputDirectory)
         assertFalse(unselected.canExport)
         val selected = ImagePrepViewModelState(
@@ -90,20 +97,22 @@ class UiStateTest {
             selection = setOf(File("/photos/a.jpg")),
             outputPathMode = OutputPathMode.Absolute,
             selectedOutputDir = File("/export"),
-        ).toUiState(listener)
+        ).toUiState(listener) { NoProjectListener }
         assertEquals(File("/export"), selected.outputDirectory)
         assertTrue(selected.canExport)
     }
 
     @Test
     fun exportIsDisabledWhileLoading() {
-        val loading = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), isLoading = true).toUiState(listener)
+        val loading = ImagePrepViewModelState(images = listOf(ImageItem(File("/photos/a.jpg"))), isLoading = true).toUiState(listener) { NoProjectListener }
         assertFalse(loading.canExport)
     }
 
     @Test
     fun exportIsReservedBeforePlanning() {
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -120,6 +129,8 @@ class UiStateTest {
     @Test
     fun heicWithoutDecoderCanBeRemoved() {
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -138,6 +149,8 @@ class UiStateTest {
     fun actionsOnSelectedImageApplyToWholeSelection() {
         val files = (1..5).map { File("/photos/$it.jpg") }
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -166,6 +179,8 @@ class UiStateTest {
     fun removingUnreadableKeepsRemainingSelection() {
         val files = listOf("a.jpg", "b.heic", "c.jpg", "d.jpg", "e.heic").map { File("/photos/$it") }
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -185,6 +200,8 @@ class UiStateTest {
     fun selectionExportSurvivesRemovalDownToOneImage() {
         val files = listOf("a.jpg", "b.heic", "c.jpg").map { File("/photos/$it") }
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -210,6 +227,8 @@ class UiStateTest {
     fun shiftArrowExtendsSelectionFromAnchor() {
         val files = (1..5).map { File("/photos/$it.jpg") }
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -233,6 +252,8 @@ class UiStateTest {
     fun undoRestoresRemovedImagesAtOriginalPositions() {
         val files = (1..5).map { File("/photos/$it.jpg") }
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -256,7 +277,7 @@ class UiStateTest {
         val state = ImagePrepViewModelState(
             images = files.map(::ImageItem),
             selection = files.toSet(),
-        ).toUiState(listener)
+        ).toUiState(listener) { NoProjectListener }
         assertEquals(listOf(File("/trip"), File("/misc")), state.imageGroups.map { it.folder })
         assertEquals(listOf(2, 1), state.imageGroups.map { it.images.size })
         // 既定の出力先は先頭フォルダの output で、複数フォルダをまとめて書き出すことを知らせる
@@ -269,6 +290,8 @@ class UiStateTest {
     fun undoingFolderRemovalRestoresFolderGroup() {
         val files = listOf("/trip/1.jpg", "/trip/2.jpg", "/misc/1.jpg").map(::File)
         val vm = ImagePrepViewModel(
+            projectStore = InMemoryProjectStore(),
+            initialFiles = listOf(),
             settings = com.imagepreptool.data.InMemorySettingsStore(),
             checkTools = { ExternalTools.None },
         )
@@ -278,4 +301,79 @@ class UiStateTest {
         vm.snapshotForTest().listener.undoRemoval()
         assertEquals(files, vm.snapshotForTest().images.map { it.file })
     }
+
+    @Test
+    fun removedImageReplacedLosesEditsWhenAddedAgain() {
+        val directory = kotlin.io.path.createTempDirectory("imageprep-removed").toFile()
+        try {
+            val image = File(directory, "a.jpg").apply { writeBytes(ByteArray(10)) }
+            val stampWhenRemoved = FileStamp.of(image)
+            val state = ImagePrepViewModelState(
+                crops = mapOf(image to CropRect(0.1f, 0.1f, 0.9f, 0.9f)),
+                rotations = mapOf(image to Rotation.Clockwise90),
+                removedFiles = setOf(image),
+                editStamps = mapOf(image to stampWhenRemoved),
+            )
+
+            // 一覧から外している間に、同じ場所へ大きさの違う別の画像が置かれた
+            image.writeBytes(ByteArray(20))
+            val added = state.withAddedImages(listOf(image))
+
+            assertEquals(mapOf(), added.crops)
+            assertEquals(mapOf(), added.rotations)
+            assertEquals(listOf(image), added.images.map { it.file })
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun editingReplacedImageDiscardsEditsForPreviousContent() {
+        val directory = kotlin.io.path.createTempDirectory("imageprep-edit").toFile()
+        try {
+            val image = File(directory, "a.jpg").apply { writeBytes(ByteArray(10)) }
+            val state = ImagePrepViewModelState(
+                crops = mapOf(image to CropRect(0.1f, 0.1f, 0.9f, 0.9f)),
+                editStamps = mapOf(image to FileStamp.of(image)),
+            )
+
+            // 切り抜いた後に外で差し替えられ、その後に回すなどの編集をした
+            image.writeBytes(ByteArray(20))
+            val edited = state.withEditStamp(image)
+
+            assertEquals(mapOf(), edited.crops)
+            assertEquals(FileStamp.of(image), edited.editStamps[image])
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun returnedImageKeepsEditsOnlyWhenUnchanged() {
+        val directory = kotlin.io.path.createTempDirectory("imageprep-returned").toFile()
+        try {
+            val same = File(directory, "same.jpg").apply { writeBytes(ByteArray(10)) }
+            val replaced = File(directory, "replaced.jpg").apply { writeBytes(ByteArray(20)) }
+            val crop = CropRect(0.1f, 0.1f, 0.9f, 0.9f)
+            val state = ImagePrepViewModelState(
+                unavailableImages = listOf(same, replaced).map { ProjectImage(it, false, false, crop, Rotation.Clockwise90, listOf()) },
+                editStamps = mapOf(
+                    same to FileStamp.of(same),
+                    // 見つからなかった間に、同じ場所へ大きさの違う別の画像が置かれた
+                    replaced to FileStamp(size = 999, modifiedAtMillis = replaced.lastModified()),
+                ),
+            ).withAddedImages(listOf(same, replaced))
+
+            assertEquals(mapOf(same to crop), state.crops)
+            assertEquals(mapOf(same to Rotation.Clockwise90), state.rotations)
+            assertTrue(state.unavailableImages.isEmpty())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+}
+
+private object NoProjectListener : ProjectItem.Listener {
+    override fun open() = Unit
+    override fun delete() = Unit
 }

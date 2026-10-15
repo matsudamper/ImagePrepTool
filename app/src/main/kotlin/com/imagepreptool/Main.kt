@@ -18,6 +18,9 @@ import java.awt.Dimension
 import java.io.File
 import javax.swing.UIManager
 import kotlinx.coroutines.launch
+import com.imagepreptool.data.AppDataDirectory
+import com.imagepreptool.data.db.AppDatabase
+import com.imagepreptool.data.db.RoomProjectStore
 import com.imagepreptool.presentation.ExportState
 import com.imagepreptool.presentation.ImagePrepViewModel
 import com.imagepreptool.resources.Res
@@ -32,13 +35,15 @@ fun main(args: Array<String>) {
     // ファイル選択ダイアログを OS 標準の見た目にする
     runCatching { UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName()) }
     val initial = args.map(::File).filter { it.exists() }
+    val projectStore = RoomProjectStore(AppDatabase.open(File(AppDataDirectory.resolve(), "imageprep.db")))
 
     application {
-        val viewModel = remember { ImagePrepViewModel().also { vm -> if (initial.isNotEmpty()) vm.uiStateFlow.value.listener.addFiles(initial) } }
+        val viewModel = remember { ImagePrepViewModel(projectStore, initial) }
         var composeWindow: java.awt.Window? = null
         val scope = rememberCoroutineScope()
         val exitApp = {
             viewModel.uiStateFlow.value.listener.cancelExport()
+            viewModel.uiStateFlow.value.listener.saveBeforeExit()
             exitApplication()
         }
         val state = rememberWindowState(width = 1360.dp, height = 860.dp, position = WindowPosition.Aligned(androidx.compose.ui.Alignment.Center))

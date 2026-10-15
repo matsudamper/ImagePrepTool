@@ -64,6 +64,7 @@ import com.imagepreptool.presentation.ExportState
 import com.imagepreptool.presentation.ImagePrepUiState
 import com.imagepreptool.presentation.ImagePrepViewModel
 import com.imagepreptool.presentation.NoticeAction
+import com.imagepreptool.presentation.ProjectItem
 import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_add_photo
 import com.imagepreptool.resources.ic_download
@@ -88,7 +89,8 @@ fun App(
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showTools by remember { mutableStateOf(false) }
-    var showCloseConfirm by remember { mutableStateOf(false) }
+    var showRenameProject by remember { mutableStateOf(false) }
+    var projectToDelete by remember { mutableStateOf<ProjectItem?>(null) }
 
     LaunchedEffect(viewModel) {
         viewModel.messages.collect { message ->
@@ -155,18 +157,26 @@ fun App(
                 .fillMaxSize()
                 .dragAndDropTarget(shouldStartDragAndDrop = { true }, target = dropTarget),
         ) {
-            if (!uiState.isWorkspaceOpen) {
-                EmptyState(
-                    recentFolders = uiState.recentFolders,
-                    isLoading = uiState.isLoading,
-                    onOpenFolder = actions.openFolder,
-                    onPickImages = actions.pickImages,
-                    onOpenRecent = listener::openFolder,
-                    onForgetRecent = listener::forgetRecent,
+            when {
+                // 前回のプロジェクトを開き終えるまでは何も出さず、ホームが一瞬見えないようにする
+                uiState.isRestoring -> Unit
+                !uiState.isWorkspaceOpen -> {
+                    EmptyState(
+                        projects = uiState.projects,
+                        isLoading = uiState.isLoading,
+                        onOpenFolder = actions.openFolder,
+                        onPickImages = actions.pickImages,
+                        onDeleteProject = { projectToDelete = it },
+                    )
+                    ToolsButton(uiState, onClick = { showTools = true }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
+                }
+                else -> Workspace(
+                    uiState = uiState,
+                    actions = actions,
+                    dialogParent = dialogParent,
+                    onRenameProject = { showRenameProject = true },
+                    onDeleteProject = { projectToDelete = it },
                 )
-                ToolsButton(uiState, onClick = { showTools = true }, modifier = Modifier.align(Alignment.TopEnd).padding(12.dp))
-            } else {
-                Workspace(uiState, actions, dialogParent, onGoHome = { showCloseConfirm = true })
             }
 
             AnimatedVisibility(visible = dragging, enter = fadeIn(), exit = fadeOut()) {
@@ -191,13 +201,26 @@ fun App(
         )
     }
 
-    if (showCloseConfirm) {
-        CloseConfirmDialog(
-            onConfirm = {
-                showCloseConfirm = false
-                listener.closeAll()
+    val projectName = uiState.projectName
+    if (showRenameProject && projectName != null) {
+        RenameProjectDialog(
+            currentName = projectName,
+            onConfirm = { name ->
+                showRenameProject = false
+                listener.renameProject(name)
             },
-            onCancel = { showCloseConfirm = false },
+            onCancel = { showRenameProject = false },
+        )
+    }
+
+    projectToDelete?.let { project ->
+        DeleteProjectDialog(
+            project = project,
+            onConfirm = {
+                projectToDelete = null
+                project.listener.delete()
+            },
+            onCancel = { projectToDelete = null },
         )
     }
 
@@ -237,14 +260,23 @@ private fun Workspace(
     uiState: ImagePrepUiState,
     actions: AppActions,
     dialogParent: Window?,
-    onGoHome: () -> Unit,
+    onRenameProject: () -> Unit,
+    onDeleteProject: (ProjectItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
     var imageListWidth by remember { mutableStateOf(312.dp) }
     Column(modifier.fillMaxSize()) {
-        TopBar(actions, onGoHome)
+        TopBar(
+            projectName = uiState.projectName.orEmpty(),
+            projects = uiState.projects,
+            actions = actions,
+            onCreateProject = uiState.listener::createProject,
+            onRenameProject = onRenameProject,
+            onDeleteProject = onDeleteProject,
+            onGoHome = uiState.listener::closeAll,
+        )
         Row(Modifier.weight(1f).fillMaxWidth()) {
             ImageListPanel(
                 imageGroups = uiState.imageGroups,
@@ -278,11 +310,13 @@ private fun Workspace(
                 index = index,
                 total = uiState.images.size,
                 options = uiState.options,
+                penTool = uiState.penTool,
                 onMove = uiState.listener::moveFocus,
                 onCropChange = uiState.listener::setCrop,
                 onRotateClockwise = uiState.listener::rotateClockwise,
                 onRotateCounterClockwise = uiState.listener::rotateCounterClockwise,
                 onStrokesChange = uiState.listener::setStrokes,
+                onPenToolChange = uiState.listener::setPenTool,
                 modifier = Modifier.weight(1f),
             )
             VerticalDivider(color = colors.outlineVariant)
@@ -345,7 +379,12 @@ private val PanelResizeHandleWidth = 6.dp
 
 @Composable
 private fun TopBar(
+    projectName: String,
+    projects: List<ProjectItem>,
     actions: AppActions,
+    onCreateProject: () -> Unit,
+    onRenameProject: () -> Unit,
+    onDeleteProject: (ProjectItem) -> Unit,
     onGoHome: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -353,9 +392,16 @@ private fun TopBar(
     Surface(color = colors.surface, modifier = modifier) {
         Column {
             Row(
-                modifier = Modifier.fillMaxWidth().height(52.dp).padding(start = 16.dp, end = 8.dp),
+                modifier = Modifier.fillMaxWidth().height(52.dp).padding(start = 8.dp, end = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                ProjectMenu(
+                    projectName = projectName,
+                    projects = projects,
+                    onCreate = onCreateProject,
+                    onRename = onRenameProject,
+                    onDelete = onDeleteProject,
+                )
                 Spacer(Modifier.weight(1f))
                 Tooltip("別のフォルダを開く (Ctrl+O)") {
                     IconButton(onClick = actions.openFolder) { Icon(painterResource(Res.drawable.ic_folder_open), "フォルダを追加") }
