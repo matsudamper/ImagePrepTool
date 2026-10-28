@@ -9,8 +9,10 @@
 
 ## ビルド
 ```bash
-./gradlew build
+./gradlew assemble
 ```
+
+ローカルでは包括的なテストを実行しないため、`build` ではなく `assemble` を使用する。
 
 # 共通ルール
 
