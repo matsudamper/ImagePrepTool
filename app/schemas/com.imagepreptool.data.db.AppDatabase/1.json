@@ -1,0 +1,532 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "8431b2275094bb625930d9cba235a2a9",
+    "entities": [
+      {
+        "tableName": "project",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `createdAtMillis` INTEGER NOT NULL, `lastOpenedAtMillis` INTEGER NOT NULL, `sortKey` TEXT NOT NULL, `sortAscending` INTEGER NOT NULL, `focusedPath` TEXT, `isSelectionMode` INTEGER NOT NULL, `outputPathMode` TEXT NOT NULL, `relativeOutputPath` TEXT NOT NULL, `absoluteOutputDir` TEXT, `options_resizeMode` TEXT NOT NULL, `options_longEdge` INTEGER NOT NULL, `options_fitWidth` INTEGER NOT NULL, `options_fitHeight` INTEGER NOT NULL, `options_onlyScaleDown` INTEGER NOT NULL, `options_outputFormat` TEXT NOT NULL, `options_quality` INTEGER NOT NULL, `options_captionEnabled` INTEGER NOT NULL, `options_captionTemplate` TEXT NOT NULL, `options_captionPosition` TEXT NOT NULL, `options_captionSizePercent` REAL NOT NULL, `options_captionStyle` TEXT NOT NULL, `options_fileNameSuffix` TEXT NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtMillis",
+            "columnName": "createdAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastOpenedAtMillis",
+            "columnName": "lastOpenedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortKey",
+            "columnName": "sortKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortAscending",
+            "columnName": "sortAscending",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "focusedPath",
+            "columnName": "focusedPath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isSelectionMode",
+            "columnName": "isSelectionMode",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.outputPathMode",
+            "columnName": "outputPathMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.relativeOutputPath",
+            "columnName": "relativeOutputPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.absoluteOutputDir",
+            "columnName": "absoluteOutputDir",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "exportSettings.options.resizeMode",
+            "columnName": "options_resizeMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.longEdge",
+            "columnName": "options_longEdge",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.fitWidth",
+            "columnName": "options_fitWidth",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.fitHeight",
+            "columnName": "options_fitHeight",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.onlyScaleDown",
+            "columnName": "options_onlyScaleDown",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.outputFormat",
+            "columnName": "options_outputFormat",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.quality",
+            "columnName": "options_quality",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.captionEnabled",
+            "columnName": "options_captionEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.captionTemplate",
+            "columnName": "options_captionTemplate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.captionPosition",
+            "columnName": "options_captionPosition",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.captionSizePercent",
+            "columnName": "options_captionSizePercent",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.captionStyle",
+            "columnName": "options_captionStyle",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.fileNameSuffix",
+            "columnName": "options_fileNameSuffix",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "project_image",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`projectId` INTEGER NOT NULL, `path` TEXT NOT NULL, `position` INTEGER NOT NULL, `removed` INTEGER NOT NULL, `selected` INTEGER NOT NULL, `cropLeft` REAL, `cropTop` REAL, `cropRight` REAL, `cropBottom` REAL, `rotation` TEXT NOT NULL, `fileSize` INTEGER NOT NULL, `fileModifiedAtMillis` INTEGER NOT NULL, PRIMARY KEY(`projectId`, `path`), FOREIGN KEY(`projectId`) REFERENCES `project`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "projectId",
+            "columnName": "projectId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "path",
+            "columnName": "path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "removed",
+            "columnName": "removed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "selected",
+            "columnName": "selected",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "cropLeft",
+            "columnName": "cropLeft",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "cropTop",
+            "columnName": "cropTop",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "cropRight",
+            "columnName": "cropRight",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "cropBottom",
+            "columnName": "cropBottom",
+            "affinity": "REAL"
+          },
+          {
+            "fieldPath": "rotation",
+            "columnName": "rotation",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileSize",
+            "columnName": "fileSize",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fileModifiedAtMillis",
+            "columnName": "fileModifiedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "projectId",
+            "path"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "project",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "projectId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "pen_stroke",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `projectId` INTEGER NOT NULL, `path` TEXT NOT NULL, `position` INTEGER NOT NULL, `kind` TEXT NOT NULL, `widthPercent` REAL NOT NULL, `color` INTEGER NOT NULL, `blurPercent` REAL NOT NULL, `points` BLOB NOT NULL, FOREIGN KEY(`projectId`, `path`) REFERENCES `project_image`(`projectId`, `path`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "projectId",
+            "columnName": "projectId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "path",
+            "columnName": "path",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "widthPercent",
+            "columnName": "widthPercent",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "color",
+            "columnName": "color",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "blurPercent",
+            "columnName": "blurPercent",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "points",
+            "columnName": "points",
+            "affinity": "BLOB",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_pen_stroke_projectId_path",
+            "unique": false,
+            "columnNames": [
+              "projectId",
+              "path"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_pen_stroke_projectId_path` ON `${TABLE_NAME}` (`projectId`, `path`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "project_image",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "projectId",
+              "path"
+            ],
+            "referencedColumns": [
+              "projectId",
+              "path"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "app_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `lastProjectId` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastProjectId",
+            "columnName": "lastProjectId",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "last_export_settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `outputPathMode` TEXT NOT NULL, `relativeOutputPath` TEXT NOT NULL, `absoluteOutputDir` TEXT, `options_resizeMode` TEXT NOT NULL, `options_longEdge` INTEGER NOT NULL, `options_fitWidth` INTEGER NOT NULL, `options_fitHeight` INTEGER NOT NULL, `options_onlyScaleDown` INTEGER NOT NULL, `options_outputFormat` TEXT NOT NULL, `options_quality` INTEGER NOT NULL, `options_captionEnabled` INTEGER NOT NULL, `options_captionTemplate` TEXT NOT NULL, `options_captionPosition` TEXT NOT NULL, `options_captionSizePercent` REAL NOT NULL, `options_captionStyle` TEXT NOT NULL, `options_fileNameSuffix` TEXT NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.outputPathMode",
+            "columnName": "outputPathMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.relativeOutputPath",
+            "columnName": "relativeOutputPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.absoluteOutputDir",
+            "columnName": "absoluteOutputDir",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "exportSettings.options.resizeMode",
+            "columnName": "options_resizeMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.longEdge",
+            "columnName": "options_longEdge",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.fitWidth",
+            "columnName": "options_fitWidth",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.fitHeight",
+            "columnName": "options_fitHeight",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.onlyScaleDown",
+            "columnName": "options_onlyScaleDown",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.outputFormat",
+            "columnName": "options_outputFormat",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.quality",
+            "columnName": "options_quality",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.captionEnabled",
+            "columnName": "options_captionEnabled",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.captionTemplate",
+            "columnName": "options_captionTemplate",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.captionPosition",
+            "columnName": "options_captionPosition",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.captionSizePercent",
+            "columnName": "options_captionSizePercent",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.captionStyle",
+            "columnName": "options_captionStyle",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exportSettings.options.fileNameSuffix",
+            "columnName": "options_fileNameSuffix",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "pen_tool",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `kind` TEXT NOT NULL, `widthPercent` REAL NOT NULL, `color` INTEGER NOT NULL, `blurPercent` REAL NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tool.kind",
+            "columnName": "kind",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tool.widthPercent",
+            "columnName": "widthPercent",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tool.color",
+            "columnName": "color",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tool.blurPercent",
+            "columnName": "blurPercent",
+            "affinity": "REAL",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '8431b2275094bb625930d9cba235a2a9')"
+    ]
+  }
+}

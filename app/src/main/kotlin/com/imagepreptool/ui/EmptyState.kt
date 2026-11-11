@@ -42,23 +42,21 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import java.io.File
+import com.imagepreptool.presentation.ProjectItem
 import com.imagepreptool.resources.Res
 import com.imagepreptool.resources.ic_add_photo
 import com.imagepreptool.resources.ic_close
-import com.imagepreptool.resources.ic_folder
 import com.imagepreptool.resources.ic_folder_open
 import com.imagepreptool.resources.ic_photo_library
 import org.jetbrains.compose.resources.painterResource
 
 @Composable
 fun EmptyState(
-    recentFolders: List<File>,
+    projects: List<ProjectItem>,
     isLoading: Boolean,
     onOpenFolder: () -> Unit,
     onPickImages: () -> Unit,
-    onOpenRecent: (File) -> Unit,
-    onForgetRecent: (File) -> Unit,
+    onDeleteProject: (ProjectItem) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = MaterialTheme.colorScheme
@@ -124,18 +122,18 @@ fun EmptyState(
                 }
             }
 
-            if (recentFolders.isNotEmpty()) {
+            if (projects.isNotEmpty()) {
                 Spacer(Modifier.height(32.dp))
                 Text(
-                    "最近使ったフォルダ",
+                    "プロジェクト",
                     style = MaterialTheme.typography.titleSmall,
                     color = colors.onSurfaceVariant,
                     modifier = Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 8.dp),
                 )
                 Surface(color = colors.surface, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
                     Column(Modifier.padding(vertical = 4.dp)) {
-                        recentFolders.forEach { dir ->
-                            RecentFolderRow(dir, onOpen = { onOpenRecent(dir) }, onForget = { onForgetRecent(dir) })
+                        projects.forEach { project ->
+                            ProjectRow(project, onDelete = { onDeleteProject(project) })
                         }
                     }
                 }
@@ -145,7 +143,7 @@ fun EmptyState(
 }
 
 @Composable
-private fun RecentFolderRow(dir: File, onOpen: () -> Unit, onForget: () -> Unit) {
+private fun ProjectRow(project: ProjectItem, onDelete: () -> Unit) {
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     val colors = MaterialTheme.colorScheme
@@ -154,25 +152,25 @@ private fun RecentFolderRow(dir: File, onOpen: () -> Unit, onForget: () -> Unit)
             .fillMaxWidth()
             .hoverable(interaction)
             .background(if (hovered) colors.surfaceContainer else Color.Transparent)
-            .clickable(onClick = onOpen)
+            .clickable(onClick = project.listener::open)
             .padding(start = 16.dp, end = 4.dp, top = 6.dp, bottom = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(painterResource(Res.drawable.ic_folder), null, tint = colors.primary, modifier = Modifier.size(20.dp))
+        Icon(painterResource(Res.drawable.ic_photo_library), null, tint = colors.primary, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(dir.name.ifEmpty { dir.path }, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(project.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(
-                dir.parentFile?.absolutePath.orEmpty(),
+                project.subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = colors.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        IconButton(onClick = onForget, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = onDelete, modifier = Modifier.size(32.dp)) {
             if (hovered) {
-                Icon(painterResource(Res.drawable.ic_close), contentDescription = "履歴から削除", tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
+                Icon(painterResource(Res.drawable.ic_close), contentDescription = "プロジェクトを削除", tint = colors.onSurfaceVariant, modifier = Modifier.size(16.dp))
             }
         }
     }
