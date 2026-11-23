@@ -21,7 +21,7 @@ dependencies {
     implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.11.0")
     implementation("io.github.vinceglb:filekit-dialogs:0.16.0")
     implementation("androidx.room:room-runtime:2.8.5")
-    implementation("androidx.sqlite:sqlite-bundled:2.6.2")
+    implementation("androidx.sqlite:sqlite-bundled:2.7.1")
     ksp("androidx.room:room-compiler:2.8.5")
     testImplementation(kotlin("test"))
 }
