@@ -996,14 +996,15 @@ class ImagePrepViewModel(
                 .map { state ->
                     val file = state.focusedFile
                     // HEIC はツール確認後に読み直す必要がある
-                    PreviewKey(file, if (file != null && ImageLoader.isHeif(file)) state.tools else null)
+                    PreviewKey(state.project?.id, file, if (file != null && ImageLoader.isHeif(file)) state.tools else null)
                 }
                 .distinctUntilChanged()
                 .collectLatestSafe { key -> renderPreview(key) }
         }
     }
 
-    private data class PreviewKey(val file: File?, val tools: ExternalTools?)
+    /** プロジェクトを切り替えるとプレビューは空になるため、同じ画像を表示していても作り直すようプロジェクトも含める */
+    private data class PreviewKey(val projectId: Long?, val file: File?, val tools: ExternalTools?)
 
     private suspend fun renderPreview(key: PreviewKey) {
         val file = key.file
