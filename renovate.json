@@ -22,6 +22,14 @@
         "/^org\\.jetbrains\\.androidx(?:[.:]|$)/"
       ],
       "automerge": true
+    },
+    {
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "automerge": true
     }
   ]
 }
