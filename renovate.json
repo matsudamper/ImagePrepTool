@@ -3,6 +3,7 @@
   "extends": [
     "config:recommended"
   ],
+  "automerge": true,
   "packageRules": [
     {
       "matchManagers": [
@@ -20,14 +21,6 @@
         "io.nlopez.compose.rules:detekt",
         "/^org\\.jetbrains\\.compose(?:[.:]|$)/",
         "/^org\\.jetbrains\\.androidx(?:[.:]|$)/"
-      ],
-      "automerge": true
-    },
-    {
-      "matchUpdateTypes": [
-        "minor",
-        "patch",
-        "digest"
       ],
       "automerge": true
     }
