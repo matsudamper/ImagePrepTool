@@ -1,21 +1,18 @@
 package com.imagepreptool.data
 
-import java.io.File
 import java.util.prefs.Preferences
 import com.imagepreptool.model.EditOptions
 import com.imagepreptool.model.OutputPathMode
 import com.imagepreptool.service.RelativeOutputPath
 
-/** 前回の設定を次回起動時に復元する */
+/**
+ * プロジェクト機能より前のバージョンが保存した書き出し設定。
+ * 一度も書き出していないときの、新しいプロジェクトの初期値に使う
+ */
 interface SettingsStore {
     fun loadOptions(): EditOptions
-    fun saveOptions(options: EditOptions)
     fun loadOutputPathMode(): OutputPathMode
-    fun saveOutputPathMode(mode: OutputPathMode)
     fun loadRelativeOutputPath(): String
-    fun saveRelativeOutputPath(path: String)
-    fun loadRecentFolders(): List<File>
-    fun saveRecentFolders(folders: List<File>)
 }
 
 class PreferencesSettingsStore(
@@ -44,22 +41,6 @@ class PreferencesSettingsStore(
         }.getOrDefault(d)
     }
 
-    override fun saveOptions(options: EditOptions) = safely {
-        prefs.put("resizeMode", options.resizeMode.name)
-        prefs.putInt("longEdge", options.longEdge)
-        prefs.putInt("fitWidth", options.fitWidth)
-        prefs.putInt("fitHeight", options.fitHeight)
-        prefs.put("outputFormat", options.outputFormat.name)
-        prefs.putInt("quality", options.quality)
-        prefs.putBoolean("captionEnabled", options.captionEnabled)
-        prefs.put("captionTemplate", options.captionTemplate)
-        prefs.put("captionPosition", options.captionPosition.name)
-        prefs.putFloat("captionSizePercent", options.captionSizePercent)
-        prefs.put("captionStyle", options.captionStyle.name)
-        prefs.put("fileNameSuffix", options.fileNameSuffix)
-        prefs.putBoolean("onlyScaleDown", options.onlyScaleDown)
-    }
-
     /** 旧バージョンの「カスタムテキスト」設定があればテンプレートとして引き継ぐ */
     private fun loadCaptionTemplate(default: String): String {
         prefs.get("captionTemplate", null)?.let { return it }
@@ -69,26 +50,7 @@ class PreferencesSettingsStore(
 
     override fun loadOutputPathMode(): OutputPathMode = enumOr(prefs.get("outputPathMode", null), OutputPathMode.Relative)
 
-    override fun saveOutputPathMode(mode: OutputPathMode) = safely {
-        prefs.put("outputPathMode", mode.name)
-    }
-
     override fun loadRelativeOutputPath(): String = prefs.get("relativeOutputPath", RelativeOutputPath.DEFAULT)
-
-    override fun saveRelativeOutputPath(path: String) = safely {
-        prefs.put("relativeOutputPath", path)
-    }
-
-    override fun loadRecentFolders(): List<File> =
-        prefs.get("recentFolders", "").lines().filter { it.isNotBlank() }.map(::File).filter { it.isDirectory }
-
-    override fun saveRecentFolders(folders: List<File>) = safely {
-        prefs.put("recentFolders", folders.joinToString("\n") { it.absolutePath })
-    }
-
-    private inline fun safely(block: () -> Unit) {
-        runCatching { block() }
-    }
 
     private inline fun <reified T : Enum<T>> enumOr(name: String?, default: T): T =
         enumValues<T>().firstOrNull { it.name == name } ?: default
@@ -98,25 +60,11 @@ class PreferencesSettingsStore(
 }
 
 class InMemorySettingsStore(
-    private var options: EditOptions = EditOptions(),
-    private var outputPathMode: OutputPathMode = OutputPathMode.Relative,
-    private var relativeOutputPath: String = RelativeOutputPath.DEFAULT,
-    private var recent: List<File> = emptyList(),
+    private val options: EditOptions = EditOptions(),
+    private val outputPathMode: OutputPathMode = OutputPathMode.Relative,
+    private val relativeOutputPath: String = RelativeOutputPath.DEFAULT,
 ) : SettingsStore {
     override fun loadOptions() = options
-    override fun saveOptions(options: EditOptions) {
-        this.options = options
-    }
     override fun loadOutputPathMode() = outputPathMode
-    override fun saveOutputPathMode(mode: OutputPathMode) {
-        outputPathMode = mode
-    }
     override fun loadRelativeOutputPath() = relativeOutputPath
-    override fun saveRelativeOutputPath(path: String) {
-        relativeOutputPath = path
-    }
-    override fun loadRecentFolders() = recent
-    override fun saveRecentFolders(folders: List<File>) {
-        recent = folders
-    }
 }
