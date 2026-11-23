@@ -3,20 +3,27 @@
   "extends": [
     "config:recommended"
   ],
-  "automerge": true,
   "packageRules": [
     {
       "matchManagers": [
         "github-actions"
       ],
       "matchPackageNames": [
-        "actions/*"
+        "actions/*",
+        "gradle/actions"
+      ],
+      "automerge": true
+    },
+    {
+      "matchManagers": [
+        "gradle-wrapper"
       ],
       "automerge": true
     },
     {
       "matchPackageNames": [
-        "/^org\\.jetbrains\\.kotlin\\.plugin\\.serialization(?:[.:]|$)/",
+        "/^org\\.jetbrains\\.kotlin(?:[.:]|$)/",
+        "/^org\\.jetbrains\\.kotlinx(?:[.:]|$)/",
         "io.gitlab.arturbosch.detekt",
         "io.nlopez.compose.rules:detekt",
         "/^org\\.jetbrains\\.compose(?:[.:]|$)/",
