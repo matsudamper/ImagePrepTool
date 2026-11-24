@@ -93,6 +93,7 @@ private val PenColors = listOf(
 @Composable
 internal fun PenEditor(
     bitmap: ImageBitmap,
+    overlayVisible: Boolean,
     strokes: List<PenStroke>,
     tool: PenTool,
     onStrokesChange: (List<PenStroke>) -> Unit,
@@ -183,15 +184,17 @@ internal fun PenEditor(
                     contentScale = ContentScale.FillBounds,
                     modifier = Modifier.fillMaxSize().shadow(18.dp, clip = false),
                 )
-                PenOverlay(
-                    bitmap = bitmap,
-                    displaySize = displaySize,
-                    newStroke = { points -> PenStroke(tool.kind, points, tool.widthPercent, tool.color, tool.blurPercent) },
-                    onStrokeAdd = { stroke -> change(strokes + stroke) },
-                    // ボタンなどにフォーカスが移った後も、描き始めれば Ctrl+Z が効くようにする
-                    onPress = { focusRequester.requestFocus() },
-                    modifier = Modifier.fillMaxSize(),
-                )
+                if (overlayVisible) {
+                    PenOverlay(
+                        bitmap = bitmap,
+                        displaySize = displaySize,
+                        newStroke = { points -> PenStroke(tool.kind, points, tool.widthPercent, tool.color, tool.blurPercent) },
+                        onStrokeAdd = { stroke -> change(strokes + stroke) },
+                        // ボタンなどにフォーカスが移った後も、描き始めれば Ctrl+Z が効くようにする
+                        onPress = { focusRequester.requestFocus() },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }

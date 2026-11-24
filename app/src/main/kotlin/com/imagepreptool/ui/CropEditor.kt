@@ -86,6 +86,7 @@ internal enum class CropAspect(val label: String) {
 @Composable
 internal fun CropEditor(
     bitmap: ImageBitmap,
+    overlayVisible: Boolean,
     imageSize: ImageSize,
     crop: CropRect?,
     onCropChange: (CropRect?) -> Unit,
@@ -145,13 +146,15 @@ internal fun CropEditor(
                     contentScale = ContentScale.FillBounds,
                     modifier = Modifier.fillMaxSize().shadow(18.dp, clip = false),
                 )
-                CropOverlay(
-                    crop = currentCrop,
-                    displaySize = displaySize,
-                    ratio = ratio,
-                    onCropChange = onCropChange,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                if (overlayVisible) {
+                    CropOverlay(
+                        crop = currentCrop,
+                        displaySize = displaySize,
+                        ratio = ratio,
+                        onCropChange = onCropChange,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }
