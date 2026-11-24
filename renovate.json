@@ -27,7 +27,8 @@
         "io.gitlab.arturbosch.detekt",
         "io.nlopez.compose.rules:detekt",
         "/^org\\.jetbrains\\.compose(?:[.:]|$)/",
-        "/^org\\.jetbrains\\.androidx(?:[.:]|$)/"
+        "/^org\\.jetbrains\\.androidx(?:[.:]|$)/",
+        "/^com\\.google\\.devtools\\.ksp(?:[.:]|$)/"
       ],
       "automerge": true
     }
