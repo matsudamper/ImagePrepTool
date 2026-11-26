@@ -195,9 +195,10 @@ private fun PreviewPaneContent(
         }
 
         // 画像
-        // 切り抜きやペンは書き出し後の設定なので、書き出し後の表示でだけ編集する
-        val activeEditor = if (mode == PreviewMode.Processed) openEditor else PreviewEditor.None
-        val isEditing = activeEditor != PreviewEditor.None
+        // 元画像に切り替えても編集画面は閉じず、同じ配置のまま元画像を表示して見比べられるようにする。
+        // 切り抜きやペンは書き出し後の設定なので、範囲や線は書き出し後の表示でだけ重ねて編集する
+        val isEditing = openEditor != PreviewEditor.None
+        val editorOverlayVisible = mode == PreviewMode.Processed
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -209,24 +210,26 @@ private fun PreviewPaneContent(
             contentAlignment = Alignment.Center,
         ) {
             val bitmap: ImageBitmap? = when {
-                isEditing -> preview.painted ?: preview.original
+                isEditing && mode == PreviewMode.Processed -> preview.painted ?: preview.original
                 mode == PreviewMode.Processed -> preview.processed ?: preview.original
                 else -> preview.original
             }
             val originalSize = preview.originalSize
             when {
                 preview.error != null -> ErrorContent(preview.error)
-                bitmap != null && activeEditor == PreviewEditor.Crop && originalSize != null -> CropEditor(
+                bitmap != null && openEditor == PreviewEditor.Crop && originalSize != null -> CropEditor(
                     bitmap = bitmap,
+                    overlayVisible = editorOverlayVisible,
                     imageSize = originalSize,
                     crop = preview.crop,
                     onCropChange = onCropChange,
                     onDone = { openEditor = PreviewEditor.None },
                 )
                 // 元に戻すの履歴は画像ごとなので、画像を切り替えたら作り直す
-                bitmap != null && activeEditor == PreviewEditor.Pen -> key(preview.file) {
+                bitmap != null && openEditor == PreviewEditor.Pen -> key(preview.file) {
                     PenEditor(
                         bitmap = bitmap,
+                        overlayVisible = editorOverlayVisible,
                         strokes = preview.strokes,
                         tool = penTool,
                         onStrokesChange = onStrokesChange,
