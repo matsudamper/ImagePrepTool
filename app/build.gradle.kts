@@ -19,7 +19,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0")
     implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel:2.11.0")
-    implementation("io.github.vinceglb:filekit-dialogs:0.16.0")
+    implementation("io.github.vinceglb:filekit-dialogs:0.17.1")
     implementation("androidx.room:room-runtime:2.8.5")
     implementation("androidx.sqlite:sqlite-bundled:2.6.2")
     ksp("androidx.room:room-compiler:2.8.5")
